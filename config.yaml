@@ -1,0 +1,228 @@
+# AI Code Mentor - Default Configuration
+# Este ficheiro contém as regras padrão. Cada projeto pode fazer override.
+
+# ═══════════════════════════════════════════════════════════
+# 🎓 MODO EDUCATIVO
+# ═══════════════════════════════════════════════════════════
+educational_mode:
+  enabled: true
+  
+  # Níveis de ajuda por severidade
+  help_levels:
+    info: 1          # Só pergunta (força a pensar)
+    warning: 2       # Pergunta + pistas
+    error: 3         # Pergunta + explicação conceptual
+    critical: 4      # Resposta completa com explicação (segurança)
+  
+  # Estilo de ensino
+  teaching_style:
+    use_socratic_method: true       # Fazer perguntas que levam à resposta
+    provide_hints: true              # Dar pistas progressivas
+    include_resources: true          # Links para documentação
+    show_examples_for_critical: true # Só mostrar código em problemas críticos
+    encourage_research: true         # Sugerir pesquisas e conceitos
+    progressive_disclosure: false    # Revelar mais info em commits seguintes
+  
+  # Tom do mentor
+  tone:
+    style: "mentor"                  # mentor, teacher, coach, friendly
+    encouraging: true                # Usar linguagem encorajadora
+    patient: true                    # Não ser exigente demais
+    use_emojis: true                 # 🤔💡📚🔍✅❌🚀
+    language: "pt-PT"                # Língua das reviews
+
+# ═══════════════════════════════════════════════════════════
+# 🎯 REGRAS DE CÓDIGO
+# ═══════════════════════════════════════════════════════════
+naming_conventions:
+  typescript:
+    variables: camelCase
+    functions: camelCase
+    classes: PascalCase
+    constants: UPPER_SNAKE_CASE
+    interfaces: PascalCase
+    types: PascalCase
+    private_prefix: "_"
+  
+  javascript:
+    variables: camelCase
+    functions: camelCase
+    classes: PascalCase
+    constants: UPPER_SNAKE_CASE
+  
+  python:
+    variables: snake_case
+    functions: snake_case
+    classes: PascalCase
+    constants: UPPER_SNAKE_CASE
+    private_prefix: "_"
+    max_line_length: 100
+  
+  react:
+    components: PascalCase
+    hooks: "use" + PascalCase
+    props: camelCase
+
+# ═══════════════════════════════════════════════════════════
+# 🔍 ANÁLISE DE CÓDIGO
+# ═══════════════════════════════════════════════════════════
+code_quality:
+  # Complexidade
+  max_function_length: 50          # Linhas
+  max_function_complexity: 10      # McCabe complexity
+  max_nested_depth: 4              # Níveis de indentação
+  
+  # Code smells
+  detect_duplicated_code: true
+  detect_dead_code: true
+  detect_unused_variables: true
+  detect_magic_numbers: true
+  
+  # Best practices
+  require_error_handling: true
+  require_input_validation: true
+  suggest_early_returns: true
+  suggest_function_decomposition: true
+
+# ═══════════════════════════════════════════════════════════
+# 🔒 SEGURANÇA
+# ═══════════════════════════════════════════════════════════
+security:
+  # Sempre dar resposta completa (critical level)
+  check_sql_injection: true
+  check_xss: true
+  check_hardcoded_secrets: true
+  check_unsafe_eval: true
+  check_path_traversal: true
+  
+  # Patterns perigosos
+  dangerous_patterns:
+    - "eval("
+    - "exec("
+    - "innerHTML ="
+    - "dangerouslySetInnerHTML"
+    - "password"
+    - "api_key"
+    - "secret"
+
+# ═══════════════════════════════════════════════════════════
+# 🚀 PERFORMANCE
+# ═══════════════════════════════════════════════════════════
+performance:
+  check_n_plus_one: true            # Queries em loops
+  check_unnecessary_loops: true     # Múltiplos loops no mesmo array
+  check_memory_leaks: true          # Event listeners, intervals
+  suggest_memoization: true         # React useMemo, useCallback
+  check_bundle_size: false          # Imports pesados
+
+# ═══════════════════════════════════════════════════════════
+# 📋 REGRAS ESPECÍFICAS POR TECNOLOGIA
+# ═══════════════════════════════════════════════════════════
+react:
+  check_hooks_rules: true           # Rules of Hooks
+  require_key_prop: true            # Keys em listas
+  check_useEffect_dependencies: true
+  suggest_custom_hooks: true        # Para lógica reutilizável
+  check_prop_types: false           # Se não usarem TypeScript
+
+typescript:
+  enforce_types: true               # Evitar 'any'
+  require_return_types: false       # Para funções
+  check_null_safety: true           # Null/undefined checks
+
+python:
+  check_pep8: true                  # Style guide
+  require_type_hints: false         # Type annotations
+  check_exception_handling: true
+
+# ═══════════════════════════════════════════════════════════
+# ⚙️ COMPORTAMENTO DO REVIEWER
+# ═══════════════════════════════════════════════════════════
+behavior:
+  # Review scope
+  max_files_per_commit: 20          # Skip commits muito grandes
+  max_lines_per_file: 500           # Skip ficheiros muito grandes
+  skip_file_types:
+    - ".json"
+    - ".md"
+    - ".lock"
+    - ".min.js"
+    - ".bundle.js"
+  
+  # Comentários
+  group_similar_issues: true        # Agrupar problemas do mesmo tipo
+  max_comments_per_commit: 10       # Não overwhelm
+  priority_order:                   # Ordem de comentários
+    - critical
+    - error
+    - warning
+    - info
+  
+  # Skip patterns
+  skip_commit_messages:
+    - "[skip-review]"
+    - "[no-review]"
+    - "WIP:"
+    - "Merge"
+    - "Revert"
+
+# ═══════════════════════════════════════════════════════════
+# 🎨 CATEGORIAS DE PROBLEMAS
+# ═══════════════════════════════════════════════════════════
+issue_categories:
+  learning:
+    emoji: "🎓"
+    description: "Conceitos para aprender"
+    examples:
+      - "Diferença entre let e const"
+      - "Imutabilidade vs mutabilidade"
+      - "Async/await vs Promises"
+  
+  security:
+    emoji: "🔒"
+    description: "Vulnerabilidades de segurança"
+    severity: critical
+    always_explain: true
+  
+  performance:
+    emoji: "🚀"
+    description: "Otimizações de performance"
+    severity: warning
+  
+  best_practices:
+    emoji: "✨"
+    description: "Boas práticas de código"
+    severity: info
+  
+  bugs:
+    emoji: "🐛"
+    description: "Possíveis bugs"
+    severity: error
+  
+  maintainability:
+    emoji: "🔧"
+    description: "Facilidade de manutenção"
+    severity: info
+
+# ═══════════════════════════════════════════════════════════
+# 📚 RECURSOS EDUCATIVOS
+# ═══════════════════════════════════════════════════════════
+learning_resources:
+  javascript:
+    - "MDN Web Docs: https://developer.mozilla.org"
+    - "JavaScript.info: https://javascript.info"
+  
+  typescript:
+    - "TypeScript Handbook: https://www.typescriptlang.org/docs/"
+  
+  react:
+    - "React Docs: https://react.dev"
+    - "React Patterns: https://reactpatterns.com"
+  
+  python:
+    - "Python Docs: https://docs.python.org"
+    - "Real Python: https://realpython.com"
+  
+  security:
+    - "OWASP Top 10: https://owasp.org/www-project-top-ten/"
+    - "Web Security Academy: https://portswigger.net/web-security"

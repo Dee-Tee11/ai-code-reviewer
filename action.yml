@@ -1,0 +1,62 @@
+name: "AI Code Mentor"
+description: "Educational AI code reviewer that teaches through questions and hints"
+author: "Your Team"
+
+branding:
+  icon: "book-open"
+  color: "blue"
+
+inputs:
+  huggingface_token:
+    description: "HuggingFace API token"
+    required: true
+
+  config_file:
+    description: "Path to custom config file (optional)"
+    required: false
+    default: ".github/code-review-config.yaml"
+
+  severity_threshold:
+    description: "Minimum severity to report (info, warning, error, critical)"
+    required: false
+    default: "info"
+
+  tone:
+    description: "Review tone (mentor, teacher, coach)"
+    required: false
+    default: "mentor"
+
+  skip_patterns:
+    description: "Commit message patterns to skip (comma-separated)"
+    required: false
+    default: "[skip-review],[no-review],WIP:"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 2 # Need previous commit for diff
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pip install -q -r ${{ github.action_path }}/requirements.txt
+
+    - name: Run AI Code Mentor
+      shell: bash
+      env:
+        HUGGINGFACE_TOKEN: ${{ inputs.huggingface_token }}
+        GITHUB_TOKEN: ${{ github.token }}
+        CONFIG_FILE: ${{ inputs.config_file }}
+        SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
+        TONE: ${{ inputs.tone }}
+        SKIP_PATTERNS: ${{ inputs.skip_patterns }}
+      run: |
+        python ${{ github.action_path }}/reviewer.py
