@@ -256,17 +256,29 @@ class GitHubHandler:
     """Gere interação com GitHub (commits, comments)"""
     
     def __init__(self, token: str):
-        self.github = Github(auth=Auth.Token(token))
-        self.repo = self._get_repo()
-        token = os.environ.get('GITHUB_TOKEN')
+        # Verificar token
         if not token:
             print("❌ GITHUB_TOKEN não encontrado!")
-            exit(1)
+            sys.exit(1)
+        
+        # Inicializar GitHub client
         self.github = Github(auth=Auth.Token(token))
+        
+        # Obter repositório
+        self.repo = self._get_repo()
+        
+        # Obter commit SHA do ambiente
+        self.commit_sha = os.getenv("GITHUB_SHA")
+        if not self.commit_sha:
+            print("❌ GITHUB_SHA não encontrado!")
+            sys.exit(1)
     
     def _get_repo(self):
         """Obtém o repositório atual"""
         repo_name = os.getenv("GITHUB_REPOSITORY")
+        if not repo_name:
+            print("❌ GITHUB_REPOSITORY não encontrado!")
+            sys.exit(1)
         return self.github.get_repo(repo_name)
     
     def should_skip_review(self) -> bool:
@@ -412,7 +424,6 @@ Prioriza os problemas críticos e erros primeiro! 🎯
 ---
 *🤖 AI Code Mentor - Foca nos problemas mais importantes primeiro!*
 """
-
 # ═══════════════════════════════════════════════════════════
 # 🚀 MAIN
 # ═══════════════════════════════════════════════════════════
