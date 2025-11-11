@@ -251,7 +251,6 @@ Analisa o código agora! 🎓
 # ═══════════════════════════════════════════════════════════
 # 🐙 GITHUB HANDLER
 # ═══════════════════════════════════════════════════════════
-
 class GitHubHandler:
     """Gere interação com GitHub (commits, comments)"""
     
@@ -272,6 +271,12 @@ class GitHubHandler:
         if not self.commit_sha:
             print("❌ GITHUB_SHA não encontrado!")
             sys.exit(1)
+        
+        # Obter informação do PR (se existir)
+        self.pr_number = self._get_pr_number()
+        self.pull_request = None
+        if self.pr_number:
+            self.pull_request = self.repo.get_pull(self.pr_number)
     
     def _get_repo(self):
         """Obtém o repositório atual"""
@@ -280,6 +285,34 @@ class GitHubHandler:
             print("❌ GITHUB_REPOSITORY não encontrado!")
             sys.exit(1)
         return self.github.get_repo(repo_name)
+    
+    def _get_pr_number(self) -> Optional[int]:
+        """Obtém o número do PR do ambiente"""
+        # Tentar obter de GITHUB_REF (refs/pull/123/merge)
+        github_ref = os.getenv("GITHUB_REF", "")
+        if "pull" in github_ref:
+            try:
+                pr_num = int(github_ref.split("/")[2])
+                print(f"📌 Detected PR #{pr_num}")
+                return pr_num
+            except (IndexError, ValueError):
+                pass
+        
+        # Tentar obter do evento
+        event_path = os.getenv("GITHUB_EVENT_PATH")
+        if event_path and os.path.exists(event_path):
+            try:
+                with open(event_path) as f:
+                    event = json.load(f)
+                    if "pull_request" in event:
+                        pr_num = event["pull_request"]["number"]
+                        print(f"📌 Detected PR #{pr_num} from event")
+                        return pr_num
+            except:
+                pass
+        
+        print("ℹ️ No PR detected, will use commit comments")
+        return None
     
     def should_skip_review(self) -> bool:
         """Verifica se deve skip o review deste commit"""
@@ -296,11 +329,17 @@ class GitHubHandler:
         return False
     
     def get_changed_files(self) -> List[FileChange]:
-        """Obtém ficheiros alterados no commit"""
-        commit = self.repo.get_commit(self.commit_sha)
+        """Obtém ficheiros alterados no commit/PR"""
+        if self.pull_request:
+            # Se for PR, usar ficheiros do PR
+            files = self.pull_request.get_files()
+        else:
+            # Senão, usar ficheiros do commit
+            commit = self.repo.get_commit(self.commit_sha)
+            files = commit.files
         
         changes = []
-        for file in commit.files:
+        for file in files:
             # Skip ficheiros não relevantes
             if self._should_skip_file(file.filename):
                 continue
@@ -343,10 +382,140 @@ class GitHubHandler:
         return False
     
     def post_review_comments(self, comments: List[ReviewComment]):
-        """Posta comentários no commit"""
+        """Posta comentários no PR ou commit"""
         if not comments:
             print("✅ Nenhum comentário para postar")
             return
+        
+        if self.pull_request:
+            self._post_pr_review(comments)
+        else:
+            self._post_commit_comments(comments)
+    
+    def _post_pr_review(self, comments: List[ReviewComment]):
+        """Posta comentários como PR Review"""
+        print("📝 Posting PR review comments...")
+        
+        # Agrupar por severidade
+        by_severity = {
+            "critical": [],
+            "error": [],
+            "warning": [],
+            "info": []
+        }
+        
+        for comment in comments:
+            by_severity[comment.severity].append(comment)
+        
+        # Preparar comentários para a review
+        review_comments = []
+        posted_count = 0
+        max_comments = 10
+        
+        for severity in ["critical", "error", "warning", "info"]:
+            for comment in by_severity[severity]:
+                if posted_count >= max_comments:
+                    break
+                
+                try:
+                    # Encontrar a posição correta no diff
+                    position = self._find_position_in_diff(
+                        comment.file_path, 
+                        comment.line_number
+                    )
+                    
+                    if position:
+                        review_comments.append({
+                            "path": comment.file_path,
+                            "position": position,
+                            "body": self._format_comment(comment)
+                        })
+                        posted_count += 1
+                        print(f"💬 Preparado comentário: {comment.title}")
+                    else:
+                        print(f"⚠️ Não foi possível encontrar posição para: {comment.title}")
+                        
+                except Exception as e:
+                    print(f"⚠️ Erro ao preparar comentário: {e}")
+        
+        # Criar a review com todos os comentários
+        if review_comments:
+            try:
+                # Criar body da review
+                total_issues = len(comments)
+                review_body = self._create_review_summary(comments, total_issues - posted_count)
+                
+                # Criar review
+                self.pull_request.create_review(
+                    commit=self.repo.get_commit(self.commit_sha),
+                    body=review_body,
+                    event="COMMENT",
+                    comments=review_comments
+                )
+                print(f"✅ Review postada com {len(review_comments)} comentários!")
+            except Exception as e:
+                print(f"❌ Erro ao criar review: {e}")
+                # Fallback: tentar postar comentários individuais
+                self._post_individual_comments(review_comments)
+        else:
+            print("⚠️ Nenhum comentário pôde ser postado (problemas com posições)")
+    
+    def _find_position_in_diff(self, filename: str, line_number: int) -> Optional[int]:
+        """Encontra a posição de uma linha no diff do PR"""
+        try:
+            for file in self.pull_request.get_files():
+                if file.filename == filename:
+                    if file.patch:
+                        # Parse do patch para encontrar a linha
+                        position = self._parse_patch_position(file.patch, line_number)
+                        return position
+            return None
+        except:
+            return None
+    
+    def _parse_patch_position(self, patch: str, target_line: int) -> Optional[int]:
+        """Parse do patch para encontrar a posição da linha"""
+        lines = patch.split('\n')
+        current_line = 0
+        position = 0
+        
+        for line in lines:
+            position += 1
+            
+            # Ignorar headers do diff
+            if line.startswith('@@'):
+                # Extrair número da linha inicial
+                match = re.search(r'\+(\d+)', line)
+                if match:
+                    current_line = int(match.group(1)) - 1
+                continue
+            
+            # Linhas adicionadas ou contexto
+            if line.startswith('+') or line.startswith(' '):
+                current_line += 1
+                if current_line == target_line:
+                    return position
+        
+        return None
+    
+    def _post_individual_comments(self, review_comments: List[Dict]):
+        """Posta comentários individuais como fallback"""
+        print("⚠️ Fallback: posting individual comments...")
+        for comment_data in review_comments:
+            try:
+                self.pull_request.create_review_comment(
+                    body=comment_data["body"],
+                    commit=self.repo.get_commit(self.commit_sha),
+                    path=comment_data["path"],
+                    position=comment_data["position"]
+                )
+                print(f"💬 Comentário individual postado")
+            except Exception as e:
+                print(f"⚠️ Erro ao postar comentário individual: {e}")
+    
+    def _post_commit_comments(self, comments: List[ReviewComment]):
+        """Posta comentários no commit (fallback quando não há PR)"""
+        print("📝 Posting commit comments...")
         
         commit = self.repo.get_commit(self.commit_sha)
         
@@ -361,9 +530,9 @@ class GitHubHandler:
         for comment in comments:
             by_severity[comment.severity].append(comment)
         
-        # Postar comentários (prioridade: critical > error > warning > info)
+        # Postar comentários
         posted_count = 0
-        max_comments = 10  # Limitar para não overwhelm
+        max_comments = 10
         
         for severity in ["critical", "error", "warning", "info"]:
             for comment in by_severity[severity]:
@@ -371,11 +540,8 @@ class GitHubHandler:
                     break
                 
                 try:
-                    # Criar comentário no commit
                     commit.create_comment(
-                        body=self._format_comment(comment),
-                        path=comment.file_path,
-                        position=comment.line_number
+                        body=self._format_comment(comment)
                     )
                     posted_count += 1
                     print(f"💬 Comentário postado: {comment.title}")
@@ -407,8 +573,27 @@ class GitHubHandler:
 *🤖 AI Code Mentor - Review Educativo*
 """
     
+    def _create_review_summary(self, all_comments: List[ReviewComment], remaining: int) -> str:
+        """Cria resumo da review para PR"""
+        summary = f"""## 🎓 AI Code Mentor - Review Educativo
+
+Foram encontrados **{len(all_comments)} pontos** para aprender e melhorar:
+
+- 🚨 **Critical:** {len([c for c in all_comments if c.severity == 'critical'])}
+- ❌ **Errors:** {len([c for c in all_comments if c.severity == 'error'])}
+- ⚠️ **Warnings:** {len([c for c in all_comments if c.severity == 'warning'])}
+- ℹ️ **Info:** {len([c for c in all_comments if c.severity == 'info'])}
+"""
+        
+        if remaining > 0:
+            summary += f"\n\n⚠️ Os {remaining} comentários restantes não foram mostrados para não overwhelm."
+        
+        summary += "\n\n💡 **Lembra-te:** Esta review usa o Método Socrático - as perguntas são para te ajudar a pensar e aprender!"
+        
+        return summary
+    
     def _create_summary(self, all_comments: List[ReviewComment], remaining: int) -> str:
-        """Cria resumo quando há muitos comentários"""
+        """Cria resumo quando há muitos comentários (commit)"""
         return f"""## 📊 Resumo da Review
 
 Foram encontrados **{len(all_comments)} pontos** para melhorar:
