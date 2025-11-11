@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from github import Github, Auth
 from huggingface_hub import InferenceClient
 
-
+# Pegar token do ambiente ou input
+github_token = os.environ.get('INPUT_GITHUB_TOKEN') or os.environ.get('GITHUB_TOKEN')
 # ═══════════════════════════════════════════════════════════
 # 📋 DATA CLASSES
 # ═══════════════════════════════════════════════════════════

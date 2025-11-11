@@ -8,8 +8,12 @@ branding:
 
 inputs:
   huggingface_token:
-    description: "HuggingFace API token"
+    description: 'HuggingFace API Token'
     required: true
+  github_token:
+    description: 'GitHub Token'
+    required: false
+    default: ${{ github.token }}
 
   config_file:
     description: "Path to custom config file (optional)"
