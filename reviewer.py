@@ -258,7 +258,11 @@ class GitHubHandler:
     def __init__(self, token: str):
         self.github = Github(auth=Auth.Token(token))
         self.repo = self._get_repo()
-        self.commit_sha = os.getenv("GITHUB_SHA")
+        token = os.environ.get('GITHUB_TOKEN')
+        if not token:
+            print("❌ GITHUB_TOKEN não encontrado!")
+            exit(1)
+        self.github = Github(auth=Auth.Token(token))
     
     def _get_repo(self):
         """Obtém o repositório atual"""
