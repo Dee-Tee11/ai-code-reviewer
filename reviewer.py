@@ -12,8 +12,9 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from github import Github
+from github import Github, Auth
 from huggingface_hub import InferenceClient
+
 
 # ═══════════════════════════════════════════════════════════
 # 📋 DATA CLASSES
@@ -254,7 +255,7 @@ class GitHubHandler:
     """Gere interação com GitHub (commits, comments)"""
     
     def __init__(self, token: str):
-        self.github = Github(token)
+        self.github = Github(auth=Auth.Token(token))
         self.repo = self._get_repo()
         self.commit_sha = os.getenv("GITHUB_SHA")
     
