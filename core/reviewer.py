@@ -2,6 +2,7 @@
 """
 AI Code Mentor - Educational Code Reviewer
 Usa Socratic Method para ensinar, não dar respostas prontas
+AGORA COM RAG: Contexto completo da aplicação!
 """
 
 import os
@@ -15,8 +16,12 @@ from dataclasses import dataclass
 from github import Github, Auth
 from huggingface_hub import InferenceClient
 
+# Importar sistema RAG
+from core.codebase_rag import CodebaseRAG, RetrievalContext
+
 # Pegar token do ambiente ou input
 github_token = os.environ.get('INPUT_GITHUB_TOKEN') or os.environ.get('GITHUB_TOKEN')
+
 # ═══════════════════════════════════════════════════════════
 # 📋 DATA CLASSES
 # ═══════════════════════════════════════════════════════════
@@ -87,19 +92,20 @@ class ConfigLoader:
         return result
 
 # ═══════════════════════════════════════════════════════════
-# 🤖 AI MENTOR
+# 🤖 AI MENTOR (COM RAG!)
 # ═══════════════════════════════════════════════════════════
 
 class AIMentor:
-    """Interface com o modelo AI (HuggingFace)"""
+    """Interface com o modelo AI (HuggingFace) + RAG"""
     
-    def __init__(self, token: str, config: Dict):
+    def __init__(self, token: str, config: Dict, rag: Optional[CodebaseRAG] = None):
         self.client = InferenceClient(token=token)
         self.config = config
         self.system_prompt = self._load_system_prompt()
+        self.rag = rag  # Sistema RAG (opcional)
         
         # Modelo: usar o melhor disponível no HF
-        self.model = "meta-llama/Llama-3.3-70B-Instruct"  # ou "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        self.model = "meta-llama/Llama-3.3-70B-Instruct"
     
     def _load_system_prompt(self) -> str:
         """Carrega o system prompt do ficheiro"""
@@ -136,7 +142,7 @@ class AIMentor:
             return []
     
     def _build_review_prompt(self, file_change: FileChange) -> str:
-        """Constrói o prompt específico para este ficheiro"""
+        """Constrói o prompt específico para este ficheiro (COM RAG!)"""
         
         # Detectar linguagem
         ext = Path(file_change.filename).suffix
@@ -149,6 +155,7 @@ class AIMentor:
         }
         language = lang_map.get(ext, "código")
         
+        # BASE DO PROMPT
         prompt = f"""
 # 📝 TAREFA: Review Educativo de Código
 
@@ -167,7 +174,34 @@ Fazer uma review **educativa** deste código. Usa o Socratic Method:
 - **warning**: Problemas (pergunta + pistas)
 - **error**: Bugs (pergunta + explicação)
 - **critical**: Segurança (resposta completa)
+"""
 
+        # ═══════════════════════════════════════════════════════
+        # 🆕 ADICIONAR CONTEXTO DO RAG (SE DISPONÍVEL)
+        # ═══════════════════════════════════════════════════════
+        
+        if self.rag:
+            try:
+                print(f"  🧠 Fetching RAG context for {file_change.filename}...")
+                context = self.rag.get_context(
+                    filepath=file_change.filename,
+                    patch=file_change.patch,
+                    top_k=3  # Top 3 resultados por categoria
+                )
+                
+                # Adicionar contexto ao prompt
+                rag_context = self._format_rag_context(context)
+                if rag_context:
+                    prompt += f"\n{rag_context}\n"
+                    print(f"  ✅ RAG context added ({len(context.similar_files)} similar files, {len(context.related_functions)} functions)")
+                else:
+                    print(f"  ℹ️ No relevant context found in RAG")
+                    
+            except Exception as e:
+                print(f"  ⚠️ Error fetching RAG context: {e}")
+        
+        # CONTINUAR COM O PROMPT NORMAL
+        prompt += f"""
 ## 💻 CÓDIGO ALTERADO
 ```{language.lower()}
 {file_change.patch or file_change.content or "Sem alterações visíveis"}
@@ -196,10 +230,68 @@ Retorna **JSON** com este formato EXATO:
 - Prioriza: critical > error > warning > info
 - Usa português de Portugal (pt-PT)
 - Inclui emojis relevantes (🤔💡📚🔍✅❌🚀🔒)
+- **USA O CONTEXTO fornecido acima** para fazer reviews mais inteligentes
 
 Analisa o código agora! 🎓
 """
         return prompt
+    
+    def _format_rag_context(self, context: RetrievalContext) -> str:
+        """Formata o contexto do RAG para incluir no prompt"""
+        sections = []
+        
+        # 1. Ficheiros similares
+        if context.similar_files:
+            files_str = "\n".join([
+                f"- `{f['path']}`: {f['content'][:150]}..."
+                for f in context.similar_files[:2]  # Só os top 2
+            ])
+            sections.append(f"""
+### 📁 Ficheiros Similares na Aplicação
+{files_str}
+""")
+        
+        # 2. Funções relacionadas
+        if context.related_functions:
+            funcs_str = "\n".join([
+                f"- `{f['name']}` em `{f['path']}`:\n  ```\n  {f['content'][:200]}...\n  ```"
+                for f in context.related_functions[:2]  # Só os top 2
+            ])
+            sections.append(f"""
+### ⚙️ Funções/Componentes Relacionados
+{funcs_str}
+""")
+        
+        # 3. Dependências
+        if context.dependencies:
+            imports = context.dependencies.get('imports', [])
+            imported_by = context.dependencies.get('imported_by', [])
+            
+            deps_info = []
+            if imports:
+                deps_info.append(f"**Importa:** {', '.join([f'`{i}`' for i in imports[:5]])}")
+            if imported_by:
+                deps_info.append(f"**Importado por:** {', '.join([f'`{i}`' for i in imported_by[:5]])}")
+            
+            if deps_info:
+                sections.append(f"""
+### 🔗 Dependências
+{chr(10).join(deps_info)}
+""")
+        
+        if sections:
+            return f"""
+## 🗂️ CONTEXTO DA APLICAÇÃO
+
+{chr(10).join(sections)}
+
+**⚠️ IMPORTANTE:** Usa este contexto para:
+- Verificar se o código está consistente com ficheiros similares
+- Ver se usa corretamente as dependências
+- Sugerir padrões já usados noutros locais da app
+"""
+        
+        return ""
     
     def _parse_ai_response(self, response: str, file_change: FileChange) -> List[ReviewComment]:
         """Parse da resposta JSON do AI"""
@@ -570,7 +662,7 @@ class GitHubHandler:
 {comment.content}
 
 ---
-*🤖 AI Code Mentor - Review Educativo*
+*🤖 AI Code Mentor - Review Educativo (com contexto RAG)*
 """
     
     def _create_review_summary(self, all_comments: List[ReviewComment], remaining: int) -> str:
@@ -589,6 +681,7 @@ Foram encontrados **{len(all_comments)} pontos** para aprender e melhorar:
             summary += f"\n\n⚠️ Os {remaining} comentários restantes não foram mostrados para não overwhelm."
         
         summary += "\n\n💡 **Lembra-te:** Esta review usa o Método Socrático - as perguntas são para te ajudar a pensar e aprender!"
+        summary += "\n\n🧠 **Powered by RAG:** Esta review tem contexto da aplicação completa!"
         
         return summary
     
@@ -609,6 +702,7 @@ Prioriza os problemas críticos e erros primeiro! 🎯
 ---
 *🤖 AI Code Mentor - Foca nos problemas mais importantes primeiro!*
 """
+
 # ═══════════════════════════════════════════════════════════
 # 🚀 MAIN
 # ═══════════════════════════════════════════════════════════
@@ -633,19 +727,37 @@ def main():
         print("❌ GITHUB_TOKEN not found!")
         sys.exit(1)
     
-    # 3. Inicializar handlers
+    # 3. Inicializar RAG (se disponível)
+    rag = None
+    rag_enabled = os.getenv("ENABLE_RAG", "true").lower() == "true"
+    
+    if rag_enabled:
+        try:
+            print("🧠 Initializing RAG system...")
+            rag_db_path = os.getenv("RAG_DB_PATH", "./chroma_db")
+            rag = CodebaseRAG(persist_directory=rag_db_path)
+            stats = rag.get_stats()
+            print(f"  ✅ RAG loaded: {stats['total_files']} files, {stats['total_functions']} functions")
+        except Exception as e:
+            print(f"  ⚠️ RAG initialization failed: {e}")
+            print("  ℹ️ Continuing without RAG context...")
+            rag = None
+    else:
+        print("ℹ️ RAG disabled (set ENABLE_RAG=true to enable)")
+    
+    # 4. Inicializar AI Mentor (com RAG)
     print("🤖 Initializing AI Mentor...")
-    mentor = AIMentor(hf_token, config)
+    mentor = AIMentor(hf_token, config, rag=rag)
     
     print("🐙 Connecting to GitHub...")
     github = GitHubHandler(gh_token)
     
-    # 4. Verificar se deve skip
+    # 5. Verificar se deve skip
     if github.should_skip_review():
         print("✅ Review skipped")
         sys.exit(0)
     
-    # 5. Obter ficheiros alterados
+    # 6. Obter ficheiros alterados
     print("📁 Getting changed files...")
     changed_files = github.get_changed_files()
     
@@ -655,7 +767,7 @@ def main():
     
     print(f"📝 Found {len(changed_files)} files to review")
     
-    # 6. Fazer review de cada ficheiro
+    # 7. Fazer review de cada ficheiro
     all_comments = []
     
     for file_change in changed_files:
@@ -666,7 +778,7 @@ def main():
         
         print(f"  └─ Found {len(comments)} issues")
     
-    # 7. Postar comentários
+    # 8. Postar comentários
     print(f"\n💬 Posting {len(all_comments)} comments...")
     github.post_review_comments(all_comments)
     
