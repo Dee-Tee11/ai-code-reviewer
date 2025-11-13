@@ -17,7 +17,7 @@ from github import Github, Auth
 from huggingface_hub import InferenceClient
 
 # Importar sistema RAG
-from core.codebase_rag import CodebaseRAG, RetrievalContext
+from codebase_rag import CodebaseRAG, RetrievalContext
 
 # Pegar token do ambiente ou input
 github_token = os.environ.get('INPUT_GITHUB_TOKEN') or os.environ.get('GITHUB_TOKEN')

@@ -14,7 +14,7 @@ from datetime import datetime
 import argparse
 
 # Importar o sistema RAG
-from core.codebase_rag import CodebaseRAG, CodeChunk, generate_chunk_id
+from codebase_rag import CodebaseRAG, CodeChunk, generate_chunk_id
 
 
 # ═══════════════════════════════════════════════════════════
