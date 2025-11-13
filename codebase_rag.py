@@ -417,30 +417,42 @@ class CodebaseRAG:
                 
                 files = set()
                 functions = 0
+                dependencies_count = 0
                 
                 for meta in metadatas:
                     if meta.get('file'):
                         files.add(meta['file'])
                     if meta.get('type') in ['function', 'class', 'component']:
                         functions += 1
+                    
+                    # Contar imports e exports como dependências
+                    imports = meta.get('imports', '')
+                    exports = meta.get('exports', '')
+                    if imports:
+                        dependencies_count += len(imports.split(','))
+                    if exports:
+                        dependencies_count += len(exports.split(','))
                 
                 return {
                     'total_items': count,
                     'total_files': len(files),
-                    'total_functions': functions
+                    'total_functions': functions,
+                    'total_dependencies': dependencies_count  # ✅ ADICIONADO!
                 }
             
             return {
                 'total_items': 0,
                 'total_files': 0,
-                'total_functions': 0
+                'total_functions': 0,
+                'total_dependencies': 0  # ✅ ADICIONADO!
             }
         except Exception as e:
             print(f"⚠️ Error getting stats: {e}")
             return {
                 'total_items': 0,
                 'total_files': 0,
-                'total_functions': 0
+                'total_functions': 0,
+                'total_dependencies': 0  # ✅ ADICIONADO!
             }
     
     def reset(self):
