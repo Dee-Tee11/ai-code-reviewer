@@ -1,31 +1,74 @@
 #!/usr/bin/env python3
 """
-Sistema RAG para Code Review
+Sistema RAG completo para Code Review
 Fornece contexto relevante da codebase durante o review
 """
 
 import os
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 
+
+# ═══════════════════════════════════════════════════════════
+# 📦 DATA CLASSES
+# ═══════════════════════════════════════════════════════════
+
+@dataclass
+class CodeChunk:
+    """Representa um chunk de código (ficheiro, função, classe)"""
+    id: str
+    type: str  # file, function, class, component
+    path: str
+    name: str
+    content: str
+    language: str
+    line_start: int
+    line_end: int
+    imports: List[str] = field(default_factory=list)
+    exports: List[str] = field(default_factory=list)
+    parent_file: Optional[str] = None
+    last_modified: str = ""
+    commit_sha: Optional[str] = None
+
+
 @dataclass
 class RetrievalContext:
     """Contexto recuperado do RAG"""
-    similar_files: List[Dict] = None
-    related_functions: List[Dict] = None
-    dependencies: Dict = None
+    similar_files: List[Dict] = field(default_factory=list)
+    related_functions: List[Dict] = field(default_factory=list)
+    dependencies: Dict = field(default_factory=dict)
+
+
+# ═══════════════════════════════════════════════════════════
+# 🔧 UTILITY FUNCTIONS
+# ═══════════════════════════════════════════════════════════
+
+def generate_chunk_id(chunk_type: str, filepath: str, name: str, line: int) -> str:
+    """
+    Gera ID único para um chunk
     
-    def __post_init__(self):
-        if self.similar_files is None:
-            self.similar_files = []
-        if self.related_functions is None:
-            self.related_functions = []
-        if self.dependencies is None:
-            self.dependencies = {}
+    Args:
+        chunk_type: Tipo do chunk (file, function, class)
+        filepath: Caminho do ficheiro
+        name: Nome da função/classe
+        line: Linha inicial
+    
+    Returns:
+        ID único (hash MD5)
+    """
+    unique_str = f"{chunk_type}:{filepath}:{name}:{line}"
+    return hashlib.md5(unique_str.encode()).hexdigest()
+
+
+# ═══════════════════════════════════════════════════════════
+# 🧠 CODEBASE RAG
+# ═══════════════════════════════════════════════════════════
 
 class CodebaseRAG:
     """Sistema RAG para recuperar contexto da codebase"""
@@ -42,13 +85,25 @@ class CodebaseRAG:
         self.model_name = model_name
         
         print(f"🧠 Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        try:
+            self.model = SentenceTransformer(model_name)
+        except Exception as e:
+            print(f"❌ Failed to load embedding model: {e}")
+            raise
         
         print(f"💾 Initializing ChromaDB at {persist_directory}")
-        self.client = chromadb.PersistentClient(
-            path=persist_directory,
-            settings=Settings(anonymized_telemetry=False)
-        )
+        
+        # Criar diretório se não existir
+        os.makedirs(persist_directory, exist_ok=True)
+        
+        try:
+            self.client = chromadb.PersistentClient(
+                path=persist_directory,
+                settings=Settings(anonymized_telemetry=False)
+            )
+        except Exception as e:
+            print(f"❌ Failed to initialize ChromaDB: {e}")
+            raise
         
         # Tentar carregar coleção existente
         try:
@@ -56,48 +111,157 @@ class CodebaseRAG:
             count = self.collection.count()
             print(f"  ✅ Connected to existing collection with {count} items")
         except Exception as e:
-            print(f"  ⚠️ Collection 'codebase' not found: {e}")
-            print(f"  ℹ️ Creating new empty collection...")
-            self.collection = self.client.create_collection("codebase")
-            print(f"  ✅ Empty collection created")
+            print(f"  ℹ️ Collection 'codebase' not found, creating new...")
+            try:
+                self.collection = self.client.create_collection("codebase")
+                print(f"  ✅ Empty collection created")
+            except Exception as create_error:
+                print(f"❌ Failed to create collection: {create_error}")
+                raise
     
-    def get_stats(self) -> Dict:
-        """Retorna estatísticas da base de dados"""
+    # ═══════════════════════════════════════════════════════════
+    # 📥 INDEXING METHODS
+    # ═══════════════════════════════════════════════════════════
+    
+    def index_file(self, chunk: CodeChunk) -> bool:
+        """
+        Indexa um ficheiro completo
+        
+        Args:
+            chunk: CodeChunk representando o ficheiro
+        
+        Returns:
+            True se sucesso
+        """
         try:
-            count = self.collection.count()
+            # Criar documento para embedding
+            doc = f"File: {chunk.name}\nPath: {chunk.path}\n{chunk.content}"
             
-            # Tentar obter metadados para contar ficheiros e funções
-            if count > 0:
-                results = self.collection.get(limit=count)
-                metadatas = results['metadatas']
-                
-                files = set()
-                functions = 0
-                
-                for meta in metadatas:
-                    if meta.get('file'):
-                        files.add(meta['file'])
-                    if meta.get('type') in ['function', 'class']:
-                        functions += 1
-                
-                return {
-                    'total_items': count,
-                    'total_files': len(files),
-                    'total_functions': functions
-                }
+            # Criar embedding
+            embedding = self.model.encode(doc).tolist()
             
-            return {
-                'total_items': 0,
-                'total_files': 0,
-                'total_functions': 0
+            # Metadata
+            metadata = {
+                'type': chunk.type,
+                'file': chunk.path,
+                'name': chunk.name,
+                'language': chunk.language,
+                'line_start': chunk.line_start,
+                'line_end': chunk.line_end,
+                'imports': ','.join(chunk.imports),
+                'exports': ','.join(chunk.exports),
+                'last_modified': chunk.last_modified
             }
+            
+            # Adicionar à coleção
+            self.collection.upsert(
+                documents=[doc],
+                embeddings=[embedding],
+                metadatas=[metadata],
+                ids=[chunk.id]
+            )
+            
+            return True
+            
         except Exception as e:
-            print(f"⚠️ Error getting stats: {e}")
-            return {
-                'total_items': 0,
-                'total_files': 0,
-                'total_functions': 0
+            print(f"  ❌ Error indexing file {chunk.path}: {e}")
+            return False
+    
+    def index_function(self, chunk: CodeChunk) -> bool:
+        """
+        Indexa uma função ou classe
+        
+        Args:
+            chunk: CodeChunk representando a função/classe
+        
+        Returns:
+            True se sucesso
+        """
+        try:
+            # Criar documento para embedding
+            doc = f"{chunk.type}: {chunk.name}\nFile: {chunk.path}\n{chunk.content}"
+            
+            # Criar embedding
+            embedding = self.model.encode(doc).tolist()
+            
+            # Metadata
+            metadata = {
+                'type': chunk.type,
+                'file': chunk.path,
+                'name': chunk.name,
+                'language': chunk.language,
+                'line_start': chunk.line_start,
+                'line_end': chunk.line_end,
+                'parent_file': chunk.parent_file or '',
+                'last_modified': chunk.last_modified
             }
+            
+            # Adicionar à coleção
+            self.collection.upsert(
+                documents=[doc],
+                embeddings=[embedding],
+                metadatas=[metadata],
+                ids=[chunk.id]
+            )
+            
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Error indexing function {chunk.name}: {e}")
+            return False
+    
+    def update_dependencies(self, filepath: str, imports: List[str], exports: List[str]):
+        """
+        Atualiza as dependências de um ficheiro
+        
+        Args:
+            filepath: Caminho do ficheiro
+            imports: Lista de imports
+            exports: Lista de exports
+        """
+        try:
+            # Buscar o ficheiro na coleção
+            results = self.collection.get(
+                where={"file": filepath, "type": "file"}
+            )
+            
+            if results and results['ids']:
+                file_id = results['ids'][0]
+                
+                # Atualizar metadata
+                self.collection.update(
+                    ids=[file_id],
+                    metadatas=[{
+                        'imports': ','.join(imports),
+                        'exports': ','.join(exports)
+                    }]
+                )
+                
+        except Exception as e:
+            print(f"  ⚠️ Error updating dependencies for {filepath}: {e}")
+    
+    def delete_file_chunks(self, filepath: str):
+        """
+        Remove todos os chunks de um ficheiro
+        
+        Args:
+            filepath: Caminho do ficheiro
+        """
+        try:
+            results = self.collection.get(
+                where={"file": filepath}
+            )
+            
+            if results and results['ids']:
+                self.collection.delete(ids=results['ids'])
+                print(f"  🗑️ Deleted {len(results['ids'])} chunks from {filepath}")
+                
+        except Exception as e:
+            print(f"  ⚠️ Error deleting chunks for {filepath}: {e}")
+    
+    # ═══════════════════════════════════════════════════════════
+    # 🔍 RETRIEVAL METHODS
+    # ═══════════════════════════════════════════════════════════
     
     def get_context(
         self, 
@@ -134,7 +298,7 @@ class CodebaseRAG:
             # 3. Buscar itens similares
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(top_k * 3, count)  # Pedir mais para filtrar depois
+                n_results=min(top_k * 3, count)
             )
             
             # 4. Processar resultados
@@ -157,11 +321,10 @@ class CodebaseRAG:
         
         # Adicionar partes do patch se disponível
         if patch:
-            # Pegar primeiras linhas do patch (sem headers do diff)
             patch_lines = [
                 line for line in patch.split('\n')
                 if not line.startswith(('@@', '---', '+++', 'diff'))
-            ][:10]  # Primeiras 10 linhas
+            ][:10]
             
             if patch_lines:
                 query_parts.append("code: " + " ".join(patch_lines))
@@ -181,97 +344,127 @@ class CodebaseRAG:
         metadatas = results['metadatas'][0]
         distances = results['distances'][0]
         
-        # Agrupar por tipo
         files_data = []
         functions_data = []
         
-        for i, (doc, meta, distance) in enumerate(zip(documents, metadatas, distances)):
-            # Skip o próprio ficheiro
+        for doc, meta, distance in zip(documents, metadatas, distances):
             if meta.get('file') == current_file:
                 continue
             
-            # Adicionar relevância (menor distância = mais relevante)
             item = {
                 'content': doc,
                 'path': meta.get('file', 'unknown'),
                 'name': meta.get('name', 'unknown'),
                 'type': meta.get('type', 'unknown'),
-                'relevance': 1 - distance  # Converter distância para score de relevância
+                'relevance': 1 - distance
             }
             
-            if meta.get('type') in ['function', 'class']:
+            if meta.get('type') in ['function', 'class', 'component']:
                 functions_data.append(item)
             else:
                 files_data.append(item)
         
-        # Ordenar por relevância e pegar top_k
         files_data.sort(key=lambda x: x['relevance'], reverse=True)
         functions_data.sort(key=lambda x: x['relevance'], reverse=True)
         
         context.similar_files = files_data[:top_k]
         context.related_functions = functions_data[:top_k]
-        
-        # Tentar inferir dependências simples
         context.dependencies = self._infer_dependencies(current_file)
         
         return context
     
     def _infer_dependencies(self, filepath: str) -> Dict:
-        """
-        Infere dependências básicas do ficheiro
-        (implementação simplificada - pode ser melhorada)
-        """
+        """Infere dependências básicas do ficheiro"""
         dependencies = {
             'imports': [],
             'imported_by': []
         }
         
         try:
-            # Buscar ficheiros que possam importar/ser importados
-            # por este ficheiro (baseado no nome)
             filename = Path(filepath).stem
             
             results = self.collection.get(
-                where={"name": {"$contains": filename}},
-                limit=10
+                where={"file": filepath, "type": "file"}
             )
             
             if results and results['metadatas']:
                 for meta in results['metadatas']:
-                    if meta.get('file') != filepath:
-                        dependencies['imports'].append(meta.get('file', 'unknown'))
+                    imports_str = meta.get('imports', '')
+                    exports_str = meta.get('exports', '')
+                    
+                    if imports_str:
+                        dependencies['imports'] = imports_str.split(',')
+                    if exports_str:
+                        dependencies['imported_by'] = exports_str.split(',')
             
         except Exception as e:
             print(f"  ⚠️ Error inferring dependencies: {e}")
         
         return dependencies
     
+    # ═══════════════════════════════════════════════════════════
+    # 📊 UTILITY METHODS
+    # ═══════════════════════════════════════════════════════════
+    
+    def get_stats(self) -> Dict:
+        """Retorna estatísticas da base de dados"""
+        try:
+            count = self.collection.count()
+            
+            if count > 0:
+                results = self.collection.get(limit=count)
+                metadatas = results['metadatas']
+                
+                files = set()
+                functions = 0
+                
+                for meta in metadatas:
+                    if meta.get('file'):
+                        files.add(meta['file'])
+                    if meta.get('type') in ['function', 'class', 'component']:
+                        functions += 1
+                
+                return {
+                    'total_items': count,
+                    'total_files': len(files),
+                    'total_functions': functions
+                }
+            
+            return {
+                'total_items': 0,
+                'total_files': 0,
+                'total_functions': 0
+            }
+        except Exception as e:
+            print(f"⚠️ Error getting stats: {e}")
+            return {
+                'total_items': 0,
+                'total_files': 0,
+                'total_functions': 0
+            }
+    
+    def reset(self):
+        """Remove toda a coleção e recria vazia"""
+        try:
+            self.client.delete_collection("codebase")
+            print("  🗑️ Collection deleted")
+        except:
+            pass
+    
     def search_similar_code(self, code_snippet: str, top_k: int = 5) -> List[Dict]:
-        """
-        Busca código similar ao snippet fornecido
-        
-        Args:
-            code_snippet: Trecho de código para buscar
-            top_k: Número de resultados
-        
-        Returns:
-            Lista de resultados similares
-        """
+        """Busca código similar ao snippet fornecido"""
         try:
             count = self.collection.count()
             if count == 0:
                 return []
             
-            # Criar embedding
             embedding = self.model.encode(code_snippet).tolist()
             
-            # Buscar
             results = self.collection.query(
                 query_embeddings=[embedding],
                 n_results=min(top_k, count)
             )
             
-            # Formatar resultados
             similar_items = []
             if results and results['documents']:
                 for doc, meta, dist in zip(
@@ -292,31 +485,3 @@ class CodebaseRAG:
         except Exception as e:
             print(f"⚠️ Error searching similar code: {e}")
             return []
-    
-    def get_file_context(self, filepath: str) -> Optional[Dict]:
-        """
-        Obtém todo o contexto disponível para um ficheiro específico
-        
-        Args:
-            filepath: Caminho do ficheiro
-        
-        Returns:
-            Dict com todo o contexto do ficheiro ou None
-        """
-        try:
-            results = self.collection.get(
-                where={"file": filepath}
-            )
-            
-            if not results or not results['documents']:
-                return None
-            
-            return {
-                'documents': results['documents'],
-                'metadatas': results['metadatas'],
-                'count': len(results['documents'])
-            }
-            
-        except Exception as e:
-            print(f"⚠️ Error getting file context: {e}")
-            return None
