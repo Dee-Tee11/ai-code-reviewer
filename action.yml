@@ -1,49 +1,93 @@
 name: "AI Code Reviewer"
-description: "Educational AI code reviewer with RAG context"
+description: "Educational AI code reviewer with optional RAG context"
+author: "Dee-Tee11"
 
 inputs:
   huggingface_token:
     description: "HuggingFace API Token"
     required: true
+
   github_token:
     description: "GitHub Personal Access Token"
     required: true
+
   enable_rag:
-    description: "Enable RAG (Retrieval-Augmented Generation) context for code review"
+    description: "Enable RAG (Retrieval-Augmented Generation) context. Set to 'true' to use existing ChromaDB."
     required: false
     default: "false"
+
   rag_db_path:
-    description: "Path to ChromaDB database for RAG"
+    description: "Path to existing ChromaDB database for RAG (must exist if enable_rag=true)"
     required: false
     default: "./chroma_db"
 
 runs:
   using: "composite"
   steps:
-    - name: Setup Python
+    # ═══════════════════════════════════════════════════════
+    # 🐍 SETUP PYTHON
+    # ═══════════════════════════════════════════════════════
+    - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
+        cache: "pip"
 
-    - name: Install dependencies
+    # ═══════════════════════════════════════════════════════
+    # 📦 INSTALL DEPENDENCIES
+    # ═══════════════════════════════════════════════════════
+    - name: 📦 Install dependencies
       shell: bash
-      run: pip install -q -r ${{ github.action_path }}/requirements.txt
+      run: |
+        echo "📦 Installing AI Code Reviewer dependencies..."
+        pip install -q -r ${{ github.action_path }}/requirements.txt
+        echo "✅ Dependencies installed"
 
-    - name: Build RAG Database
+    # ═══════════════════════════════════════════════════════
+    # 🧠 VERIFY RAG DATABASE (SE ENABLED)
+    # ═══════════════════════════════════════════════════════
+    - name: 🧠 Verify RAG Database
       if: inputs.enable_rag == 'true'
       shell: bash
-      env:
-        GITHUB_WORKSPACE: ${{ github.workspace }}
-        RAG_DB_PATH: ${{ inputs.rag_db_path }}
       run: |
-        echo "📚 Building RAG database..."
-        python ${{ github.action_path }}/build_rag.py
+        RAG_PATH="${{ inputs.rag_db_path }}"
 
-    - name: Run reviewer
+        echo "🔍 Checking RAG database at: $RAG_PATH"
+
+        if [ -d "$RAG_PATH" ] && [ -n "$(ls -A $RAG_PATH 2>/dev/null)" ]; then
+          echo "✅ RAG database found!"
+          
+          if [ -f "$RAG_PATH/chroma.sqlite3" ]; then
+            DB_SIZE=$(du -sh $RAG_PATH 2>/dev/null | cut -f1 || echo "unknown")
+            echo "📊 Database size: $DB_SIZE"
+          fi
+          
+          echo "🎯 Reviews will include context from your codebase"
+        else
+          echo "⚠️ WARNING: RAG enabled but database not found at $RAG_PATH"
+          echo "💡 The action will NOT build RAG automatically."
+          echo "📝 To fix this:"
+          echo "   1. Run locally: python .rag/build.py"
+          echo "   2. Commit: git add chroma_db/ && git commit -m '🧠 Add RAG database'"
+          echo "   3. Push: git push"
+          echo ""
+          echo "⚡ Review will proceed WITHOUT RAG context"
+        fi
+
+    # ═══════════════════════════════════════════════════════
+    # 🤖 RUN AI CODE REVIEWER
+    # ═══════════════════════════════════════════════════════
+    - name: 🤖 Run AI Code Reviewer
       shell: bash
       env:
         HUGGINGFACE_TOKEN: ${{ inputs.huggingface_token }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         ENABLE_RAG: ${{ inputs.enable_rag }}
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
-      run: python ${{ github.action_path }}/reviewer.py
+      run: |
+        echo "🚀 Starting AI Code Review..."
+        python ${{ github.action_path }}/reviewer.py
+
+branding:
+  icon: "book-open"
+  color: "blue"
