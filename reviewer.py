@@ -345,9 +345,8 @@ Retorna **JSON** com este formato EXATO:
         return emoji_map.get(category, "💡")
 
 # ═══════════════════════════════════════════════════════════
-# 🐙 GITHUB HANDLER (SEM MUDANÇAS)
+# 🐙 GITHUB HANDLER (FIXED!)
 # ═══════════════════════════════════════════════════════════
-# [... código do GitHubHandler permanece igual ...]
 
 class GitHubHandler:
     """Gere interação com GitHub (commits, comments)"""
@@ -459,30 +458,143 @@ class GitHubHandler:
         return False
     
     def post_review_comments(self, comments: List[ReviewComment]):
+        """Posta comentários como um único comentário geral (não inline)"""
         if not comments:
             print("✅ Nenhum comentário para postar")
             return
         
-        if self.pull_request:
-            self._post_pr_review(comments)
-        else:
-            self._post_commit_comments(comments)
+        # Agrupar comentários por ficheiro
+        comments_by_file = {}
+        for comment in comments:
+            if comment.file_path not in comments_by_file:
+                comments_by_file[comment.file_path] = []
+            comments_by_file[comment.file_path].append(comment)
+        
+        # Criar comentário formatado
+        formatted_comment = self._format_review_summary(comments_by_file, len(comments))
+        
+        # Postar como comentário geral
+        try:
+            commit = self.repo.get_commit(self.commit_sha)
+            
+            # ✅ COMENTÁRIO GERAL (sem path/position - aparece na Conversation)
+            commit.create_comment(body=formatted_comment)
+            
+            print(f"✅ Posted general review comment with {len(comments)} issues")
+            
+        except Exception as e:
+            print(f"❌ Error posting comment: {e}")
+            # Fallback: tentar postar comentários individuais inline
+            print("⚠️ Trying to post individual inline comments...")
+            self._post_fallback_comments(comments)
     
-    # [... métodos de posting permanecem iguais ...]
-    def _post_pr_review(self, comments):
-        # Implementação existente
-        pass
+    def _format_review_summary(self, comments_by_file: Dict[str, List[ReviewComment]], total_issues: int) -> str:
+        """Formata todos os comentários num único review bonito"""
+        
+        # Header
+        summary = f"""## 🎓 AI Code Review
+
+**Total de issues encontradas:** {total_issues}
+
+---
+
+"""
+        
+        # Agrupar por severidade
+        severity_order = ["critical", "error", "warning", "info"]
+        severity_emoji = {
+            "critical": "🚨",
+            "error": "❌",
+            "warning": "⚠️",
+            "info": "💡"
+        }
+        
+        # Para cada ficheiro
+        for file_path, file_comments in sorted(comments_by_file.items()):
+            summary += f"### 📁 `{file_path}`\n\n"
+            
+            # Ordenar por severidade e linha
+            sorted_comments = sorted(
+                file_comments, 
+                key=lambda c: (severity_order.index(c.severity), c.line_number)
+            )
+            
+            for comment in sorted_comments:
+                emoji = severity_emoji.get(comment.severity, "💡")
+                
+                summary += f"""#### {emoji} **{comment.title}** (linha {comment.line_number})
+**Severidade:** `{comment.severity}`
+**Categoria:** `{comment.category}`
+
+{comment.content}
+
+---
+
+"""
+        
+        # Footer
+        summary += """
+<details>
+<summary>📊 Estatísticas desta Review</summary>
+
+"""
+        
+        # Contar por severidade
+        severity_counts = {}
+        for severity in severity_order:
+            count = sum(1 for comments in comments_by_file.values() for c in comments if c.severity == severity)
+            if count > 0:
+                emoji = severity_emoji[severity]
+                severity_counts[severity] = count
+                summary += f"- {emoji} **{severity.capitalize()}:** {count}\n"
+        
+        summary += "\n</details>\n\n"
+        summary += "_Review gerado por AI Code Mentor 🤖_"
+        
+        return summary
     
-    def _post_commit_comments(self, comments):
-        # Implementação existente
-        pass
+    def _post_fallback_comments(self, comments: List[ReviewComment]):
+        """Fallback: tenta postar comentários inline individuais"""
+        try:
+            commit = self.repo.get_commit(self.commit_sha)
+            
+            for comment in comments:
+                try:
+                    # Comentário inline (com path e position)
+                    commit.create_comment(
+                        body=self._format_single_comment(comment),
+                        path=comment.file_path,
+                        position=comment.line_number
+                    )
+                    print(f"  ✅ Posted inline comment on {comment.file_path}:{comment.line_number}")
+                except Exception as e:
+                    print(f"  ⚠️ Failed to post inline comment: {e}")
+                    
+        except Exception as e:
+            print(f"❌ Fallback also failed: {e}")
     
-    def _format_comment(self, comment):
-        # Implementação existente
-        pass
+    def _format_single_comment(self, comment: ReviewComment) -> str:
+        """Formata um único comentário inline"""
+        severity_emoji = {
+            "critical": "🚨",
+            "error": "❌",
+            "warning": "⚠️",
+            "info": "💡"
+        }
+        
+        emoji = severity_emoji.get(comment.severity, "💡")
+        
+        return f"""{emoji} **{comment.title}**
+
+**Severidade:** `{comment.severity}` | **Categoria:** `{comment.category}`
+
+{comment.content}
+
+---
+_AI Code Mentor 🤖_"""
 
 # ═══════════════════════════════════════════════════════════
-# 🚀 MAIN (ATUALIZADO - NÃO CONSTRÓI RAG!)
+# 🚀 MAIN
 # ═══════════════════════════════════════════════════════════
 
 def main():
@@ -505,9 +617,7 @@ def main():
         print("❌ GITHUB_TOKEN not found!")
         sys.exit(1)
     
-    # ═══════════════════════════════════════════════════════
     # 3. TENTAR CARREGAR RAG EXISTENTE (NÃO CONSTRÓI!)
-    # ═══════════════════════════════════════════════════════
     rag = None
     enable_rag = os.getenv("ENABLE_RAG", "false").lower() == "true"
     
