@@ -107,42 +107,67 @@ def initialize_rag(rag_db_path: str):
     Inicializa sistema RAG (só é chamado se ChromaDB existe)
     
     Returns:
-        CodebaseRAG instance ou None
+        ChromaDB client ou None
     """
     try:
         # Import apenas quando necessário
-        from chromadb import Client
-        from chromadb.config import Settings
+        import chromadb
         
         print(f"🧠 Loading RAG database from {rag_db_path}...")
+        print(f"   📍 Absolute path: {Path(rag_db_path).absolute()}")
         
-        # Criar client ChromaDB
-        client = Client(Settings(
-            persist_directory=rag_db_path,
-            anonymized_telemetry=False
-        ))
+        # Verificar conteúdo da pasta
+        db_path = Path(rag_db_path)
+        print(f"   📂 Contents:")
+        for item in db_path.iterdir():
+            if item.is_file():
+                size = item.stat().st_size / 1024
+                print(f"      - {item.name} ({size:.1f} KB)")
+            else:
+                print(f"      - {item.name}/ (directory)")
+        
+        # Criar client ChromaDB com configuração correta
+        client = chromadb.PersistentClient(
+            path=rag_db_path,
+            settings=chromadb.Settings(
+                anonymized_telemetry=False,
+                allow_reset=False
+            )
+        )
+        
+        print(f"   ✅ Client created successfully")
         
         # Verificar coleções disponíveis
         collections = client.list_collections()
         
+        print(f"   📊 Found {len(collections)} collection(s)")
+        
         if not collections:
-            print("⚠️ No collections found in ChromaDB")
+            print("  ⚠️ No collections found in ChromaDB")
+            print("     💡 The database exists but is empty or corrupted")
+            print("     💡 Try running: python .rag/build.py")
             return None
         
         print(f"  ✅ RAG loaded successfully!")
-        print(f"     📦 {len(collections)} collection(s) available")
         
         for collection in collections:
-            count = collection.count()
-            print(f"     - {collection.name}: {count} items")
+            try:
+                count = collection.count()
+                print(f"     📦 {collection.name}: {count} items")
+            except Exception as e:
+                print(f"     ⚠️ {collection.name}: Error reading ({e})")
         
         return client
         
-    except ImportError:
-        print("  ⚠️ ChromaDB package not installed (pip install chromadb)")
+    except ImportError as e:
+        print(f"  ⚠️ ChromaDB package not installed: {e}")
+        print("     💡 Run: pip install chromadb")
         return None
     except Exception as e:
-        print(f"  ⚠️ RAG initialization failed: {e}")
+        print(f"  ⚠️ RAG initialization failed: {type(e).__name__}: {e}")
+        import traceback
+        print("     Full traceback:")
+        traceback.print_exc()
         return None
 
 
@@ -213,7 +238,7 @@ def main():
         all_comments = []
         stats = ReviewStatistics(
             total_files=len(changed_files),
-            rag_enabled=(rag is not None)
+            rag_enabled=rag_available  # Usa o flag, não o objeto
         )
         
         for file_change in changed_files:
