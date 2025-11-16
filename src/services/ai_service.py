@@ -37,7 +37,7 @@ class AIService:
     def __init__(self, 
                  token: str, 
                  config: Dict,
-                 rag_system = None,  # Optional[CodebaseRAG]
+                 rag_system = None,  # ChromaDB Client ou None
                  model: str = None):
         """
         Inicializa o serviço AI
@@ -45,7 +45,7 @@ class AIService:
         Args:
             token: HuggingFace API token
             config: Configuração completa (do ConfigService)
-            rag_system: Sistema RAG opcional
+            rag_system: ChromaDB client opcional
             model: Nome do modelo (default: Llama-3.3-70B)
         
         Raises:
@@ -211,7 +211,7 @@ Retorna **JSON** com este formato EXATO:
     
     def _get_rag_context(self, file_change: FileChange) -> str:
         """
-        Obtém contexto do RAG e formata para o prompt
+        Obtém contexto do RAG usando ChromaDB diretamente
         
         Args:
             file_change: FileChange object
@@ -220,57 +220,79 @@ Retorna **JSON** com este formato EXATO:
             String formatada com contexto ou string vazia
         """
         try:
-            context = self.rag.get_context(
-                filepath=file_change.filename,
-                patch=file_change.patch,
-                top_k=3
+            # Extrair nome do ficheiro
+            filename = Path(file_change.filename).name
+            
+            # Tentar obter coleção principal
+            collections = self.rag.list_collections()
+            
+            if not collections:
+                return ""
+            
+            # Prioridade: codebase > files > functions
+            main_collection = None
+            for col in collections:
+                if col.name in ["codebase", "files", "functions"]:
+                    count = col.count()
+                    if count > 0:
+                        main_collection = col
+                        break
+            
+            if not main_collection:
+                return ""
+            
+            # Query 1: Buscar por nome do ficheiro
+            query_text = f"file:{filename} {file_change.filename}"
+            
+            results = main_collection.query(
+                query_texts=[query_text],
+                n_results=5,
+                include=["documents", "metadatas", "distances"]
             )
             
-            if not context.has_context:
+            # Se não encontrou nada relevante, tentar query genérica
+            if not results["documents"][0] or results["distances"][0][0] > 1.5:
+                query_text = f"code similar to {filename}"
+                results = main_collection.query(
+                    query_texts=[query_text],
+                    n_results=3,
+                    include=["documents", "metadatas", "distances"]
+                )
+            
+            # Formatar contexto
+            if not results["documents"][0]:
                 return ""
             
             sections = []
             
-            # Ficheiros similares
-            if context.similar_files:
-                files_str = "\n".join([
-                    f"- `{f['path']}`: {f['content'][:150]}..."
-                    for f in context.similar_files[:2]
-                ])
-                sections.append(f"### 📁 Ficheiros Similares\n{files_str}")
-            
-            # Funções relacionadas
-            if context.related_functions:
-                funcs_str = "\n".join([
-                    f"- `{f['name']}` em `{f['path']}`:\n  ```\n  {f['content'][:200]}...\n  ```"
-                    for f in context.related_functions[:2]
-                ])
-                sections.append(f"### ⚙️ Funções Relacionadas\n{funcs_str}")
-            
-            # Dependências
-            if context.dependencies:
-                imports = context.dependencies.get('imports', [])
-                imported_by = context.dependencies.get('imported_by', [])
+            # Processar resultados
+            for doc, meta, dist in zip(
+                results["documents"][0][:3],  # Max 3 resultados
+                results["metadatas"][0][:3],
+                results["distances"][0][:3]
+            ):
+                # Só adicionar se relevante (distância < 1.5)
+                if dist > 1.5:
+                    continue
                 
-                deps_info = []
-                if imports:
-                    deps_info.append(f"**Importa:** {', '.join([f'`{i}`' for i in imports[:5]])}")
-                if imported_by:
-                    deps_info.append(f"**Importado por:** {', '.join([f'`{i}`' for i in imported_by[:5]])}")
+                # Extrair info do metadata
+                file_path = meta.get("file", meta.get("path", "unknown"))
+                content_preview = doc[:200] if len(doc) > 200 else doc
                 
-                if deps_info:
-                    sections.append(f"### 🔗 Dependências\n{chr(10).join(deps_info)}")
+                sections.append(f"- `{file_path}`:\n  ```\n  {content_preview}...\n  ```")
             
             if sections:
+                context_text = "\n".join(sections)
                 return f"""
 ## 🗂️ CONTEXTO DA APLICAÇÃO
 
-{chr(10).join(sections)}
+### 📁 Código Relacionado
+{context_text}
 
 **⚠️ IMPORTANTE:** Usa este contexto para:
-- Verificar se o código está consistente com ficheiros similares
-- Ver se usa corretamente as dependências
-- Sugerir padrões já usados noutros locais da app
+- Verificar consistência com código existente
+- Sugerir padrões já usados na aplicação
+- Identificar duplicação ou inconsistências
 """
             
             return ""
