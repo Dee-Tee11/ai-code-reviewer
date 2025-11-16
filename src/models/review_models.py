@@ -6,7 +6,6 @@ Contém todos os modelos de dados usados no AI Code Reviewer
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
-from datetime import datetime
 
 
 # ═══════════════════════════════════════════════════════════
@@ -87,120 +86,6 @@ class FileChange:
     def has_content(self) -> bool:
         """Verifica se tem conteúdo disponível"""
         return self.content is not None and len(self.content) > 0
-
-
-# ═══════════════════════════════════════════════════════════
-# 🧠 RAG MODELS
-# ═══════════════════════════════════════════════════════════
-
-@dataclass
-class CodeChunk:
-    """
-    Representa um chunk de código para indexação no RAG
-    
-    Pode ser:
-    - Um ficheiro completo (type='file')
-    - Uma função (type='function')
-    - Uma classe (type='class')
-    - Um componente React (type='component')
-    
-    Attributes:
-        id: Identificador único (hash MD5)
-        type: Tipo do chunk
-        path: Caminho relativo do ficheiro
-        name: Nome do ficheiro/função/classe
-        content: Conteúdo completo do código
-        language: Linguagem de programação
-        line_start: Linha inicial no ficheiro
-        line_end: Linha final no ficheiro
-        imports: Lista de imports deste chunk
-        exports: Lista de exports deste chunk
-        parent_file: ID do ficheiro pai (para funções/classes)
-        last_modified: Timestamp da última modificação
-        commit_sha: SHA do commit (opcional)
-    """
-    id: str
-    type: str
-    path: str
-    name: str
-    content: str
-    language: str
-    line_start: int
-    line_end: int
-    imports: List[str] = field(default_factory=list)
-    exports: List[str] = field(default_factory=list)
-    parent_file: Optional[str] = None
-    last_modified: str = ""
-    commit_sha: Optional[str] = None
-    
-    def __post_init__(self):
-        """Validação e defaults"""
-        valid_types = ["file", "function", "class", "component"]
-        if self.type not in valid_types:
-            raise ValueError(f"Type must be one of {valid_types}, got {self.type}")
-        
-        valid_languages = ["python", "javascript", "typescript", "unknown"]
-        if self.language not in valid_languages:
-            raise ValueError(f"Language must be one of {valid_languages}, got {self.language}")
-        
-        # Default timestamp se não fornecido
-        if not self.last_modified:
-            self.last_modified = datetime.now().isoformat()
-        
-        # Validar linhas
-        if self.line_start < 1:
-            raise ValueError(f"line_start must be >= 1, got {self.line_start}")
-        if self.line_end < self.line_start:
-            raise ValueError(f"line_end ({self.line_end}) must be >= line_start ({self.line_start})")
-    
-    @property
-    def line_count(self) -> int:
-        """Número de linhas deste chunk"""
-        return self.line_end - self.line_start + 1
-    
-    @property
-    def is_file(self) -> bool:
-        """Verifica se é um ficheiro completo"""
-        return self.type == "file"
-    
-    @property
-    def is_function(self) -> bool:
-        """Verifica se é uma função/método"""
-        return self.type == "function"
-
-
-@dataclass
-class RetrievalContext:
-    """
-    Contexto recuperado do sistema RAG
-    
-    Usado para fornecer informação relevante durante o code review:
-    - Ficheiros similares na codebase
-    - Funções/componentes relacionados
-    - Dependências do ficheiro
-    
-    Attributes:
-        similar_files: Lista de ficheiros com código similar
-        related_functions: Lista de funções/componentes relacionados
-        dependencies: Dict com imports/exports do ficheiro
-    """
-    similar_files: List[Dict] = field(default_factory=list)
-    related_functions: List[Dict] = field(default_factory=list)
-    dependencies: Dict = field(default_factory=dict)
-    
-    @property
-    def has_context(self) -> bool:
-        """Verifica se tem algum contexto disponível"""
-        return (
-            len(self.similar_files) > 0 or 
-            len(self.related_functions) > 0 or 
-            len(self.dependencies) > 0
-        )
-    
-    @property
-    def total_items(self) -> int:
-        """Total de itens de contexto"""
-        return len(self.similar_files) + len(self.related_functions)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -321,10 +206,6 @@ __all__ = [
     "ReviewComment",
     "FileChange",
     "ReviewStatistics",
-    
-    # RAG models
-    "CodeChunk",
-    "RetrievalContext",
     
     # Helper functions
     "create_review_comment",

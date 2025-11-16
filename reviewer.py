@@ -14,16 +14,11 @@ from pathlib import Path
 # Adicionar src/ ao Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.models import ReviewStatistics
-from src.services import (
-    ConfigService,
-    AIService,
-    GitHubService,
-    CommentFormatter,
-    ConfigurationError,
-    AIServiceError,
-    GitHubServiceError
-)
+from src.models.review_models import ReviewStatistics
+from src.services.config_service import ConfigService, ConfigurationError
+from src.services.ai_service import AIService, AIServiceError
+from src.services.github_service import GitHubService, GitHubServiceError
+from src.services.formatter_service import CommentFormatter
 
 # Importar RAG (opcional)
 try:
