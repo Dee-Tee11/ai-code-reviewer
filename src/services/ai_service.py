@@ -30,7 +30,7 @@ class AIService:
     - Parsear respostas do AI
     """
     
-    DEFAULT_MODEL = "deepseek-ai/deepseek-coder-6.7b-instruct"
+    DEFAULT_MODEL = "codellama/CodeLlama-7b-Instruct-hf"
     DEFAULT_MAX_TOKENS = 2000
     DEFAULT_TEMPERATURE = 0.7
     
