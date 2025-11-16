@@ -28,17 +28,36 @@ python build.py
 ```
 
 This will:
+
 - ✅ Create a virtual environment
 - ✅ Install dependencies
 - ✅ Index all `.py`, `.ts`, `.tsx`, `.js`, `.jsx` files
 - ✅ Generate `chroma_db/` folder
 
-### 2️⃣ **Commit to Git**
+### 2️⃣ **Setup GitHub Action**
+
+Copy the example workflow to your repository:
 
 ```bash
-# Add the database to your repo
-git add chroma_db/
-git commit -m "🧠 Initialize RAG database"
+# Copy the example workflow
+cp .rag/github-action-example.yml .github/workflows/code-review.yml
+
+# Or create it manually
+mkdir -p .github/workflows
+# Then edit .github/workflows/code-review.yml
+```
+
+**Important:** Add your secrets in GitHub:
+
+- Go to **Settings** → **Secrets and variables** → **Actions**
+- Add `HUGGINGFACE_TOKEN` (get it from https://huggingface.co/settings/tokens)
+
+### 3️⃣ **Commit to Git**
+
+```bash
+# Add the database and RAG system to your repo
+git add chroma_db/ codebase_rag.py .github/workflows/
+git commit -m "🧠 Initialize RAG database and AI Code Review"
 git push
 ```
 
@@ -50,6 +69,7 @@ python .rag/update.py
 ```
 
 Then commit again:
+
 ```bash
 git add chroma_db/
 git commit -m "🧠 Update RAG database"
@@ -93,6 +113,7 @@ The RAG system indexes:
 - **Imports/Exports**: Dependency tracking
 
 **Supported Languages:**
+
 - 🐍 Python (`.py`)
 - 📘 TypeScript (`.ts`, `.tsx`)
 - 🟨 JavaScript (`.js`, `.jsx`)
@@ -131,6 +152,7 @@ chroma_db/
 ## 💾 Database Size
 
 Typical sizes:
+
 - Small project (10-50 files): ~5-10 MB
 - Medium project (50-200 files): ~20-50 MB
 - Large project (200+ files): ~50-200 MB
@@ -140,9 +162,11 @@ Typical sizes:
 ## ⚠️ Important Notes
 
 ### **Windows Users**
+
 The scripts work on Windows! Encoding is handled automatically.
 
 ### **Git LFS** (Optional)
+
 If your database exceeds 100MB, consider using Git LFS:
 
 ```bash
@@ -151,6 +175,7 @@ git add .gitattributes
 ```
 
 ### **GitHub Actions**
+
 The AI Code Reviewer action will automatically use the `chroma_db/` from your repo - no need to rebuild in CI!
 
 ---
@@ -158,18 +183,21 @@ The AI Code Reviewer action will automatically use the `chroma_db/` from your re
 ## 🐛 Troubleshooting
 
 ### "Failed to load embedding model"
+
 ```bash
 # Reinstall dependencies
 pip install --force-reinstall sentence-transformers
 ```
 
 ### "Database not found"
+
 ```bash
 # Build it first
 python .rag/build.py
 ```
 
 ### "Virtual environment not found"
+
 ```bash
 # Remove and rebuild
 rm -rf .rag/venv

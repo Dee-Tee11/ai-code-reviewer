@@ -2,6 +2,9 @@
 """
 Review Models - Dataclasses centralizadas
 Contém todos os modelos de dados usados no AI Code Reviewer
+
+Usage:
+    from src.models.review_models import ReviewComment, FileChange
 """
 
 from dataclasses import dataclass, field
@@ -195,18 +198,3 @@ def create_review_comment(
         content=content,
         emoji=emoji
     )
-
-
-# ═══════════════════════════════════════════════════════════
-# 📦 EXPORTS
-# ═══════════════════════════════════════════════════════════
-
-__all__ = [
-    # Review models
-    "ReviewComment",
-    "FileChange",
-    "ReviewStatistics",
-    
-    # Helper functions
-    "create_review_comment",
-]

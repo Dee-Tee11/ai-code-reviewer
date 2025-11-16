@@ -1,0 +1,96 @@
+name: 🎓 AI Code Review (with RAG)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      # ═══════════════════════════════════════════════════════
+      # 📥 CHECKOUT
+      # ═══════════════════════════════════════════════════════
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ═══════════════════════════════════════════════════════
+      # 🧠 CHECK RAG DATABASE
+      # ═══════════════════════════════════════════════════════
+      - name: 🧠 Check RAG Database
+        id: check-rag
+        run: |
+          if [ -d "./chroma_db" ] && [ -n "$(ls -A ./chroma_db 2>/dev/null)" ]; then
+            echo "rag_available=true" >> $GITHUB_OUTPUT
+            echo "✅ RAG database found - reviews will have full context!"
+            
+            if [ -f "chroma_db/chroma.sqlite3" ]; then
+              DB_SIZE=$(du -sh chroma_db | cut -f1)
+              echo "📊 Database size: $DB_SIZE"
+            fi
+          else
+            echo "rag_available=false" >> $GITHUB_OUTPUT
+            echo "⚠️ RAG database not found - review will proceed without context"
+            echo ""
+            echo "💡 To enable RAG context:"
+            echo "   1. python .rag/build.py"
+            echo "   2. git add chroma_db/ codebase_rag.py"
+            echo "   3. git commit -m '🧠 Initialize RAG database'"
+            echo "   4. git push"
+          fi
+
+      # ═══════════════════════════════════════════════════════
+      # 💾 CACHE RAG DATABASE (Optional but recommended)
+      # ═══════════════════════════════════════════════════════
+      - name: 💾 Cache RAG Database
+        if: steps.check-rag.outputs.rag_available == 'true'
+        uses: actions/cache@v3
+        with:
+          path: ./chroma_db
+          key: rag-db-${{ github.repository }}-${{ hashFiles('**/*.py', '**/*.js', '**/*.ts', '**/*.tsx', '**/*.jsx') }}
+          restore-keys: |
+            rag-db-${{ github.repository }}-
+
+      # ═══════════════════════════════════════════════════════
+      # 🤖 AI CODE REVIEW
+      # ═══════════════════════════════════════════════════════
+      - name: 🎓 AI Code Mentor
+        uses: Dee-Tee11/ai-code-reviewer@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          huggingface_token: ${{ secrets.HUGGINGFACE_TOKEN }}
+          enable_rag: ${{ steps.check-rag.outputs.rag_available }}
+          rag_db_path: ./chroma_db
+
+      # ═══════════════════════════════════════════════════════
+      # 📊 REVIEW STATISTICS
+      # ═══════════════════════════════════════════════════════
+      - name: 📊 Review Summary
+        if: always()
+        run: |
+          echo "### 📊 Review Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **RAG Context:** ${{ steps.check-rag.outputs.rag_available == 'true' && '✅ Enabled' || '⚠️ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check-rag.outputs.rag_available }}" == "true" ]; then
+            if [ -d "./chroma_db" ]; then
+              DB_SIZE=$(du -sh chroma_db 2>/dev/null | cut -f1 || echo "unknown")
+              echo "- **Database Size:** $DB_SIZE" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "💡 **Tip:** Enable RAG for context-aware reviews!" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`python .rag/build.py\` to create the database." >> $GITHUB_STEP_SUMMARY
+          fi
