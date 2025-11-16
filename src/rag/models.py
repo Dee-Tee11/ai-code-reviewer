@@ -32,6 +32,15 @@ class RetrievalContext:
     similar_files: List[Dict] = field(default_factory=list)
     related_functions: List[Dict] = field(default_factory=list)
     dependencies: Dict = field(default_factory=dict)
+    
+    def has_context(self) -> bool:
+        """Verifica se existe contexto relevante"""
+        return (
+            len(self.similar_files) > 0 or 
+            len(self.related_functions) > 0 or
+            bool(self.dependencies.get('imports')) or
+            bool(self.dependencies.get('imported_by'))
+        )
 
 
 def generate_chunk_id(chunk_type: str, filepath: str, name: str, line: int) -> str:

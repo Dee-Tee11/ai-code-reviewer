@@ -140,7 +140,12 @@ class ContextRetriever:
             filename = Path(filepath).stem
             
             results = self.storage.get(
-                where={"file": filepath, "type": "file"}
+                where={
+                    "$and": [
+                        {"file": {"$eq": filepath}},
+                        {"type": {"$eq": "file"}}
+                    ]
+                }
             )
             
             if results and results['metadatas']:
