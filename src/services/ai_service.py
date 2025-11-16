@@ -30,7 +30,11 @@ class AIService:
     - Parsear respostas do AI
     """
     
-    DEFAULT_MODEL = "codellama/CodeLlama-7b-Instruct-hf"
+    # Modelos gratuitos e GARANTIDOS no HuggingFace Inference API:
+    # - meta-llama/Llama-3.2-3B-Instruct (MAIS CONFIÁVEL)
+    # - mistralai/Mistral-7B-Instruct-v0.3
+    # Nota: Modelos maiores (CodeLlama, DeepSeek) podem não estar disponíveis gratuitamente
+    DEFAULT_MODEL = "meta-llama/Llama-3.2-3B-Instruct"
     DEFAULT_MAX_TOKENS = 2000
     DEFAULT_TEMPERATURE = 0.7
     
@@ -107,6 +111,9 @@ class AIService:
         prompt = self._build_review_prompt(file_change)
         
         try:
+            print(f"    🔄 Calling HuggingFace API...")
+            print(f"    📋 Model: {self.model}")
+            
             # Chamar API do HuggingFace
             response = self.client.chat_completion(
                 model=self.model,
@@ -118,15 +125,38 @@ class AIService:
                 temperature=self.DEFAULT_TEMPERATURE
             )
             
+            print(f"    ✅ API responded successfully")
+            
             # Parse da resposta
             response_text = response.choices[0].message.content
+            print(f"    📝 Response length: {len(response_text)} chars")
+            
             comments = self._parse_ai_response(response_text, file_change)
             
             print(f"    ✅ Found {len(comments)} issues")
             return comments
             
         except Exception as e:
-            print(f"    ⚠️ AI error: {e}")
+            # Log detalhado do erro
+            error_type = type(e).__name__
+            error_msg = str(e) if str(e) else "(empty error message)"
+            
+            print(f"    ❌ AI error ({error_type}): {error_msg}")
+            
+            # Se for erro de modelo não suportado, sugerir alternativas
+            if "model" in error_msg.lower() or "not found" in error_msg.lower():
+                print(f"    💡 Modelo {self.model} pode não estar disponível")
+                print(f"    💡 Tente: meta-llama/Llama-3.2-3B-Instruct")
+            
+            # Debug completo
+            import traceback
+            print(f"    🔍 Full error details:")
+            traceback.print_exc()
+            
+            # Tentar ler atributos do erro
+            if hasattr(e, '__dict__'):
+                print(f"    📊 Error attributes: {e.__dict__}")
+            
             return []
     
     def _build_review_prompt(self, file_change: FileChange) -> str:
