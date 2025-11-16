@@ -13,7 +13,7 @@ from pathlib import Path
 from github import Github, Auth
 from github.GithubException import GithubException
 
-from src.models import FileChange, ReviewComment
+from src.models.review_models import FileChange, ReviewComment
 from .formatter_service import CommentFormatter
 
 

@@ -11,7 +11,7 @@ from typing import List, Optional, Dict
 
 from huggingface_hub import InferenceClient
 
-from src.models import FileChange, ReviewComment, create_review_comment
+from src.models.review_models import FileChange, ReviewComment, create_review_comment
 
 
 class AIServiceError(Exception):

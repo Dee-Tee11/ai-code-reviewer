@@ -5,7 +5,7 @@ Formata comentários de review para GitHub (Markdown)
 """
 
 from typing import List, Dict
-from src.models import ReviewComment
+from src.models.review_models import ReviewComment
 
 
 class CommentFormatter:

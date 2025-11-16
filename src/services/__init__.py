@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Services Module - Business logic do AI Code Reviewer
 """
