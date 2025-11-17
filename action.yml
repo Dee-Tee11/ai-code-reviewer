@@ -86,7 +86,7 @@ runs:
         echo "enable_rag: ${{ inputs.enable_rag }}"
         echo "rag_db_path: ${{ inputs.rag_db_path }}"
       env:
-        GROQ_KEY: ${{ inputs.groq }}
+        GROQ: ${{ inputs.groq }}
         GH_KEY: ${{ inputs.github_token }}
 
     # ═══════════════════════════════════════════════════════
@@ -95,7 +95,7 @@ runs:
     - name: 🤖 Run AI Code Reviewer
       shell: bash
       env:
-        GROQ_API_KEY: ${{ inputs.groq }}
+        GROQ: ${{ inputs.groq }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         ENABLE_RAG: ${{ inputs.enable_rag }}
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
