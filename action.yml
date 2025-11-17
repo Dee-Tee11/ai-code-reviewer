@@ -81,12 +81,12 @@ runs:
       shell: bash
       run: |
         echo "🔍 Debugging inputs..."
-        echo "groq length: ${#GROQ}"
+        echo "groq length: ${#GROQ_KEY}"
         echo "github_token length: ${#GH_KEY}"
         echo "enable_rag: ${{ inputs.enable_rag }}"
         echo "rag_db_path: ${{ inputs.rag_db_path }}"
       env:
-        GROQ: ${{ inputs.groq }}
+        GROQ_KEY: ${{ inputs.groq }}
         GH_KEY: ${{ inputs.github_token }}
 
     # ═══════════════════════════════════════════════════════
@@ -101,7 +101,7 @@ runs:
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
       run: |
         echo "🚀 Starting AI Code Review (powered by Groq)..."
-        echo "🔍 GROQ_API_KEY length: ${#GROQ}"
+        echo "🔍 GROQ_KEY length: ${#GROQ_KEY}"
         echo "🔍 GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
         python ${{ github.action_path }}/reviewer.py
 
