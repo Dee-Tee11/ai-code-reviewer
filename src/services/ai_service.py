@@ -36,7 +36,7 @@ class AIService:
     # - mixtral-8x7b-32768 (Bom para código)
     # - gemma2-9b-it (Alternativa Google)
     DEFAULT_MODEL = "llama-3.3-70b-versatile"
-    DEFAULT_MAX_TOKENS = 2000
+    DEFAULT_MAX_TOKENS = 5000
     DEFAULT_TEMPERATURE = 0.7
     
     def __init__(self, 
