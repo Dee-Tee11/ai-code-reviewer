@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AI Service
-Interface com modelo AI (HuggingFace) + RAG opcional para code review educativo
+Interface com modelo AI (Groq) + RAG opcional para code review educativo
 """
 
 import json
@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from huggingface_hub import InferenceClient
+from groq import Groq
 
 from src.models.review_models import FileChange, ReviewComment, create_review_comment
 
@@ -24,17 +24,18 @@ class AIService:
     Serviço de AI para code review educativo
     
     Responsabilidades:
-    - Comunicar com modelo AI (HuggingFace)
+    - Comunicar com modelo AI (Groq)
     - Construir prompts educativos
     - Integrar contexto RAG (se disponível)
     - Parsear respostas do AI
     """
     
-    # Modelos gratuitos e GARANTIDOS no HuggingFace Inference API:
-    # - meta-llama/Llama-3.2-3B-Instruct (MAIS CONFIÁVEL)
-    # - mistralai/Mistral-7B-Instruct-v0.3
-    # Nota: Modelos maiores (CodeLlama, DeepSeek) podem não estar disponíveis gratuitamente
-    DEFAULT_MODEL = "meta-llama/Llama-3.2-3B-Instruct"
+    # Modelos Groq disponíveis (TODOS GRATUITOS):
+    # - llama-3.3-70b-versatile (Melhor qualidade)
+    # - llama-3.1-8b-instant (Mais rápido)
+    # - mixtral-8x7b-32768 (Bom para código)
+    # - gemma2-9b-it (Alternativa Google)
+    DEFAULT_MODEL = "llama-3.3-70b-versatile"
     DEFAULT_MAX_TOKENS = 2000
     DEFAULT_TEMPERATURE = 0.7
     
@@ -47,30 +48,31 @@ class AIService:
         Inicializa o serviço AI
         
         Args:
-            token: HuggingFace API token
+            token: Groq API token
             config: Configuração completa (do ConfigService)
             rag_system: ChromaDB client opcional
-            model: Nome do modelo (default: Llama-3.3-70B)
+            model: Nome do modelo (default: llama-3.3-70b-versatile)
         
         Raises:
             AIServiceError: Se token inválido ou erro na inicialização
         """
         if not token:
-            raise AIServiceError("HuggingFace token is required")
+            raise AIServiceError("Groq API token is required")
         
         self.config = config
         self.rag = rag_system
         self.model = model or self.DEFAULT_MODEL
         
         try:
-            self.client = InferenceClient(token=token)
+            self.client = Groq(api_key=token)
         except Exception as e:
-            raise AIServiceError(f"Failed to initialize HuggingFace client: {e}")
+            raise AIServiceError(f"Failed to initialize Groq client: {e}")
         
         # Carregar system prompt
         self.system_prompt = self._load_system_prompt()
         
         print(f"  🤖 AI Service initialized with model: {self.model}")
+        print(f"  ⚡ Using Groq (ultra-fast inference)")
         if self.rag:
             print("  🧠 RAG context available")
     
@@ -111,18 +113,19 @@ class AIService:
         prompt = self._build_review_prompt(file_change)
         
         try:
-            print(f"    🔄 Calling HuggingFace API...")
+            print(f"    🔄 Calling Groq API...")
             print(f"    📋 Model: {self.model}")
             
-            # Chamar API do HuggingFace
-            response = self.client.chat_completion(
+            # Chamar API do Groq
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.DEFAULT_MAX_TOKENS,
-                temperature=self.DEFAULT_TEMPERATURE
+                temperature=self.DEFAULT_TEMPERATURE,
+                response_format={"type": "json_object"}  # Força resposta JSON
             )
             
             print(f"    ✅ API responded successfully")
@@ -143,19 +146,10 @@ class AIService:
             
             print(f"    ❌ AI error ({error_type}): {error_msg}")
             
-            # Se for erro de modelo não suportado, sugerir alternativas
-            if "model" in error_msg.lower() or "not found" in error_msg.lower():
-                print(f"    💡 Modelo {self.model} pode não estar disponível")
-                print(f"    💡 Tente: meta-llama/Llama-3.2-3B-Instruct")
-            
             # Debug completo
             import traceback
             print(f"    🔍 Full error details:")
             traceback.print_exc()
-            
-            # Tentar ler atributos do erro
-            if hasattr(e, '__dict__'):
-                print(f"    📊 Error attributes: {e.__dict__}")
             
             return []
     
@@ -208,9 +202,8 @@ Fazer uma review **educativa** deste código. Usa o Socratic Method:
 ```
 
 ## 📋 FORMATO DA RESPOSTA
-Retorna **JSON** com este formato EXATO:
+Retorna **APENAS JSON válido** com este formato EXATO:
 
-```json
 {{
   "reviews": [
     {{
@@ -222,10 +215,9 @@ Retorna **JSON** com este formato EXATO:
     }}
   ]
 }}
-```
 
-**IMPORTANTE:**
-- Retorna APENAS o JSON, sem explicações extra
+**REGRAS IMPORTANTES:**
+- Retorna APENAS JSON válido, sem markdown ou texto extra
 - Máximo 5 reviews por ficheiro
 - Prioriza: critical > error > warning > info
 - Usa português de Portugal (pt-PT)
@@ -235,7 +227,7 @@ Retorna **JSON** com este formato EXATO:
         if self.rag:
             prompt += "- **USA O CONTEXTO fornecido acima** para fazer reviews mais inteligentes e consistentes com o resto da aplicação\n"
         
-        prompt += "\nAnalisa o código agora! 🎓\n"
+        prompt += "\nAnalisa o código agora e retorna APENAS o JSON! 🎓\n"
         
         return prompt
     

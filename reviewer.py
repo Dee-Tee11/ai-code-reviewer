@@ -33,23 +33,23 @@ def validate_environment() -> tuple[str, str]:
     Valida que as env vars necessárias existem
     
     Returns:
-        (hf_token, gh_token)
+        (groq_token, gh_token)
     
     Raises:
         SystemExit: Se tokens não existirem
     """
-    hf_token = os.getenv("HUGGINGFACE_TOKEN")
+    groq_token = os.getenv("GROQ_API_KEY")
     gh_token = os.getenv("GITHUB_TOKEN")
     
-    if not hf_token:
-        print("❌ HUGGINGFACE_TOKEN not found!")
+    if not groq_token:
+        print("❌ GROQ_API_KEY not found!")
         sys.exit(1)
     
     if not gh_token:
         print("❌ GITHUB_TOKEN not found!")
         sys.exit(1)
     
-    return hf_token, gh_token
+    return groq_token, gh_token
 
 
 def check_rag_availability() -> tuple[bool, str]:
@@ -107,11 +107,11 @@ def initialize_rag(rag_db_path: str):
     Inicializa sistema RAG (só é chamado se ChromaDB existe)
     
     Returns:
-        ChromaDB client ou None
+        ChromaRAG instance ou None
     """
     try:
-        # Import apenas quando necessário
-        import chromadb
+        # Import do wrapper
+        from chroma_rag import ChromaRAG
         
         print(f"🧠 Loading RAG database from {rag_db_path}...")
         print(f"   📍 Absolute path: {Path(rag_db_path).absolute()}")
@@ -126,42 +126,31 @@ def initialize_rag(rag_db_path: str):
             else:
                 print(f"      - {item.name}/ (directory)")
         
-        # Criar client ChromaDB com configuração correta
-        client = chromadb.PersistentClient(
-            path=rag_db_path,
-            settings=chromadb.Settings(
-                anonymized_telemetry=False,
-                allow_reset=False
-            )
-        )
+        # Criar ChromaRAG wrapper
+        rag = ChromaRAG(persist_directory=rag_db_path)
         
-        print(f"   ✅ Client created successfully")
+        print(f"   ✅ RAG initialized successfully")
         
-        # Verificar coleções disponíveis
-        collections = client.list_collections()
+        # Obter estatísticas
+        stats = rag.get_stats()
         
-        print(f"   📊 Found {len(collections)} collection(s)")
-        
-        if not collections:
-            print("  ⚠️ No collections found in ChromaDB")
-            print("     💡 The database exists but is empty or corrupted")
+        if stats["total_items"] == 0:
+            print("  ⚠️ RAG database is empty")
             print("     💡 Try running: python .rag/build.py")
             return None
         
         print(f"  ✅ RAG loaded successfully!")
+        print(f"     📊 Total items: {stats['total_items']}")
         
-        for collection in collections:
-            try:
-                count = collection.count()
-                print(f"     📦 {collection.name}: {count} items")
-            except Exception as e:
-                print(f"     ⚠️ {collection.name}: Error reading ({e})")
+        for name, count in stats["collections"].items():
+            if count > 0:
+                print(f"     📦 {name}: {count} items")
         
-        return client
+        return rag
         
     except ImportError as e:
-        print(f"  ⚠️ ChromaDB package not installed: {e}")
-        print("     💡 Run: pip install chromadb")
+        print(f"  ⚠️ ChromaRAG wrapper not found: {e}")
+        print("     💡 Make sure chroma_rag.py is in the action directory")
         return None
     except Exception as e:
         print(f"  ⚠️ RAG initialization failed: {type(e).__name__}: {e}")
