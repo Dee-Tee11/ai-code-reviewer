@@ -107,11 +107,11 @@ def initialize_rag(rag_db_path: str):
     Inicializa sistema RAG (só é chamado se ChromaDB existe)
     
     Returns:
-        ChromaRAG instance ou None
+        ChromaDB client ou None
     """
     try:
-        # Import do wrapper
-        from chroma_rag import ChromaRAG
+        # Import ChromaDB diretamente
+        import chromadb
         
         print(f"🧠 Loading RAG database from {rag_db_path}...")
         print(f"   📍 Absolute path: {Path(rag_db_path).absolute()}")
@@ -126,31 +126,49 @@ def initialize_rag(rag_db_path: str):
             else:
                 print(f"      - {item.name}/ (directory)")
         
-        # Criar ChromaRAG wrapper
-        rag = ChromaRAG(persist_directory=rag_db_path)
+        # Criar client ChromaDB diretamente
+        client = chromadb.PersistentClient(
+            path=rag_db_path,
+            settings=chromadb.Settings(
+                anonymized_telemetry=False,
+                allow_reset=False
+            )
+        )
         
-        print(f"   ✅ RAG initialized successfully")
+        print(f"   ✅ ChromaDB client created")
         
-        # Obter estatísticas
-        stats = rag.get_stats()
+        # Verificar coleções
+        collections = client.list_collections()
         
-        if stats["total_items"] == 0:
-            print("  ⚠️ RAG database is empty")
+        print(f"   📊 Found {len(collections)} collection(s)")
+        
+        if not collections:
+            print("  ⚠️ RAG database is empty (no collections)")
             print("     💡 Try running: python .rag/build.py")
             return None
         
-        print(f"  ✅ RAG loaded successfully!")
-        print(f"     📊 Total items: {stats['total_items']}")
+        # Contar items em cada coleção
+        total_items = 0
+        for col in collections:
+            try:
+                count = col.count()
+                total_items += count
+                if count > 0:
+                    print(f"     📦 {col.name}: {count} items")
+            except Exception as e:
+                print(f"     ⚠️ {col.name}: Error reading ({e})")
         
-        for name, count in stats["collections"].items():
-            if count > 0:
-                print(f"     📦 {name}: {count} items")
+        if total_items == 0:
+            print("  ⚠️ RAG collections are empty")
+            return None
         
-        return rag
+        print(f"  ✅ RAG loaded successfully! ({total_items} total items)")
+        
+        return client
         
     except ImportError as e:
-        print(f"  ⚠️ ChromaRAG wrapper not found: {e}")
-        print("     💡 Make sure chroma_rag.py is in the action directory")
+        print(f"  ⚠️ ChromaDB not installed: {e}")
+        print("     💡 Run: pip install chromadb")
         return None
     except Exception as e:
         print(f"  ⚠️ RAG initialization failed: {type(e).__name__}: {e}")
@@ -168,7 +186,7 @@ def main():
         
         # 2. Validar environment
         print("\n🔐 Validating environment...")
-        hf_token, gh_token = validate_environment()
+        groq_token, gh_token = validate_environment()
         print("  ✅ Tokens found")
         
         # 3. Carregar configuração
@@ -192,7 +210,7 @@ def main():
         print("\n🚀 Initializing services...")
         
         ai_service = AIService(
-            token=hf_token,
+            token=groq_token,
             config=config,
             rag_system=rag
         )
