@@ -95,7 +95,7 @@ runs:
     - name: 🤖 Run AI Code Reviewer
       shell: bash
       env:
-        GROQ: ${{ inputs.groq }}
+        GROQ_API_KEY: ${{ inputs.groq }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         ENABLE_RAG: ${{ inputs.enable_rag }}
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
