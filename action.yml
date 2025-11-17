@@ -75,6 +75,21 @@ runs:
         fi
 
     # ═══════════════════════════════════════════════════════
+    # 🔍 DEBUG - CHECK INPUTS
+    # ═══════════════════════════════════════════════════════
+    - name: 🔍 Debug - Check Inputs
+      shell: bash
+      run: |
+        echo "🔍 Debugging inputs..."
+        echo "groq_api_key length: ${#GROQ_KEY}"
+        echo "github_token length: ${#GH_KEY}"
+        echo "enable_rag: ${{ inputs.enable_rag }}"
+        echo "rag_db_path: ${{ inputs.rag_db_path }}"
+      env:
+        GROQ_KEY: ${{ inputs.groq_api_key }}
+        GH_KEY: ${{ inputs.github_token }}
+
+    # ═══════════════════════════════════════════════════════
     # 🤖 RUN AI CODE REVIEWER
     # ═══════════════════════════════════════════════════════
     - name: 🤖 Run AI Code Reviewer
@@ -86,6 +101,8 @@ runs:
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
       run: |
         echo "🚀 Starting AI Code Review (powered by Groq)..."
+        echo "🔍 GROQ_API_KEY length: ${#GROQ_API_KEY}"
+        echo "🔍 GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
         python ${{ github.action_path }}/reviewer.py
 
 branding:
