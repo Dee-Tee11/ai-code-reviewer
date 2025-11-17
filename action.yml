@@ -101,7 +101,7 @@ runs:
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
       run: |
         echo "🚀 Starting AI Code Review (powered by Groq)..."
-        echo "🔍 GROQ_KEY length: ${#GROQ_KEY}"
+        echo "🔍 GROQ_API_KEY length: ${#GROQ_API_KEY}"
         echo "🔍 GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
         python ${{ github.action_path }}/reviewer.py
 
