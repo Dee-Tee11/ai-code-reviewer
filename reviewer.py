@@ -15,10 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.models.review_models import ReviewStatistics
-from src.services.config_service import ConfigService, ConfigurationError
 from src.services.ai_service import AIService, AIServiceError
 from src.services.github_service import GitHubService, GitHubServiceError
 from src.services.formatter_service import CommentFormatter
+from src.services.template_loader import load_template_config, get_template_name
 
 
 def print_banner():
@@ -189,11 +189,10 @@ def main():
         groq_token, gh_token = validate_environment()
         print("  ✅ Tokens found")
         
-        # 3. Carregar configuração
-        print("\n📋 Loading configuration...")
-        config_service = ConfigService()
-        config = config_service.load()
-        config_service.print_summary()
+        # 3. Carregar configuração (template-only system)
+        print("\n📋 Loading configuration from template...")
+        config, system_prompt = load_template_config()
+        print(f"  ✅ Template loaded: {get_template_name()}")
         
         # 4. Verificar disponibilidade do RAG
         print("\n🧠 Checking RAG availability...")
@@ -212,12 +211,15 @@ def main():
         ai_service = AIService(
             token=groq_token,
             config=config,
-            rag_system=rag
+            rag_system=rag,
+            system_prompt=system_prompt  # Pass from template
         )
         
         github_service = GitHubService(
             token=gh_token,
-            skip_patterns=config_service.get_skip_patterns()
+            skip_patterns=config.get("behavior", {}).get("skip_commit_messages", [
+                "[skip-review]", "[no-review]", "WIP:", "Merge", "Revert"
+            ])
         )
         
         print("  ✅ All services initialized")
@@ -231,7 +233,9 @@ def main():
         # 8. Obter ficheiros alterados
         print("\n📁 Getting changed files...")
         changed_files = github_service.get_changed_files(
-            skip_file_types=config_service.get_skip_file_types()
+            skip_file_types=config.get("behavior", {}).get("skip_file_types", [
+                ".json", ".md", ".lock", ".min.js"
+            ])
         )
         
         if not changed_files:
@@ -257,7 +261,7 @@ def main():
             all_comments.extend(comments)
         
         # 10. Aplicar limites
-        max_comments = config_service.get_max_comments()
+        max_comments = config.get("behavior", {}).get("max_comments_per_commit", 10)
         if len(all_comments) > max_comments:
             print(f"\n⚠️ Limiting comments from {len(all_comments)} to {max_comments}")
             all_comments = CommentFormatter.limit_comments(all_comments, max_comments)

@@ -65,18 +65,6 @@ jobs:
       # 🤖 AI CODE REVIEW (Powered by Groq)
       # ═══════════════════════════════════════════════════════
       - name: 🎓 AI Code Mentor (Groq-powered)
-        uses: Dee-Tee11/ai-code-reviewer@main
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          groq: ${{ secrets.GROQ_API_KEY }}
-          enable_rag: ${{ steps.check-rag.outputs.rag_available }}
-          rag_db_path: ./chroma_db
-
-      # ═══════════════════════════════════════════════════════
-      # 📊 REVIEW STATISTICS
-      # ═══════════════════════════════════════════════════════
-      - name: 📊 Review Summary
-        if: always()
         run: |
           echo "### 📊 Review Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

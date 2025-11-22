@@ -20,6 +20,11 @@ inputs:
     description: "Path to existing ChromaDB database for RAG (must exist if enable_rag=true)"
     required: false
     default: "./chroma_db"
+  
+  template:
+    description: "Reviewer personality template: 'default' (professional), or custom path like './.github/my-reviewer.txt'"
+    required: false
+    default: "default"
 
 runs:
   using: "composite"
@@ -99,6 +104,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         ENABLE_RAG: ${{ inputs.enable_rag }}
         RAG_DB_PATH: ${{ inputs.rag_db_path }}
+        REVIEWER_TEMPLATE: ${{ inputs.template }}
       run: |
         echo "🚀 Starting AI Code Review (powered by Groq)..."
         echo "🔍 GROQ_API_KEY length: ${#GROQ_API_KEY}"

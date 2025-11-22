@@ -43,7 +43,8 @@ class AIService:
                  token: str, 
                  config: Dict,
                  rag_system = None,  # ChromaDB Client ou None
-                 model: str = None):
+                 model: str = None,
+                 system_prompt: str = None):  # NEW: optional prompt from template
         """
         Inicializa o serviço AI
         
@@ -68,34 +69,18 @@ class AIService:
         except Exception as e:
             raise AIServiceError(f"Failed to initialize Groq client: {e}")
         
-        # Carregar system prompt
-        self.system_prompt = self._load_system_prompt()
+        # System prompt is REQUIRED (from template)
+        if not system_prompt:
+            raise AIServiceError("System prompt is required. Use templates to provide it.")
+        
+        self.system_prompt = system_prompt
         
         print(f"  🤖 AI Service initialized with model: {self.model}")
         print(f"  ⚡ Using Groq (ultra-fast inference)")
         if self.rag:
             print("  🧠 RAG context available")
     
-    def _load_system_prompt(self) -> str:
-        """
-        Carrega o system prompt do ficheiro
-        
-        Returns:
-            String com system prompt
-        
-        Raises:
-            AIServiceError: Se ficheiro não existir
-        """
-        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "system_prompt.txt"
-        
-        if not prompt_path.exists():
-            raise AIServiceError(f"System prompt not found at {prompt_path}")
-        
-        try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except Exception as e:
-            raise AIServiceError(f"Failed to load system prompt: {e}")
+
     
     def review_code(self, file_change: FileChange) -> List[ReviewComment]:
         """
